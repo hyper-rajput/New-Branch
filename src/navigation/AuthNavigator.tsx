@@ -5,6 +5,7 @@ import SignUpScreen from '../screens/SignUpScreen';
 import ProfileSetupScreen from '../screens/ProfileSetupScreen';
 import DashboardScreen from '../screens/Dashboard'; // ✅ Make sure this exists and is a valid React component
 import HealthTrackingScreen from '../screens/HealthTrackingScreen';
+import FamilyMemberScreen from '../screens/FamilyMemberScreen';
 const Stack = createNativeStackNavigator();
 
 const AuthNavigator = () => {
@@ -15,6 +16,7 @@ const AuthNavigator = () => {
       <Stack.Screen name="ProfileSetupScreen" component={ProfileSetupScreen} />
       <Stack.Screen name="Dashboard" component={DashboardScreen} />
       <Stack.Screen name="HealthTrackingScreen" component={HealthTrackingScreen} />
+       <Stack.Screen name="FamilyMemberScreen" component={FamilyMemberScreen} />
     </Stack.Navigator>
   );
 };

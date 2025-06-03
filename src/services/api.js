@@ -1,7 +1,7 @@
 import axios from "axios";
 import EncryptedStorage from 'react-native-encrypted-storage';
 
-const BASE_URL = "http://192.168.29.121:8000";
+const BASE_URL = "http://lumia-env.eba-smvczc8e.us-east-1.elasticbeanstalk.com/";
 const FIREBASE_API_KEY = "AIzaSyD8gecJk3z5GYZGdjyEmDL5fnpN_hYuPdg"; // Replace with your key
 
 const api = axios.create({

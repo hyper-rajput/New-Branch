@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Alert, TouchableOpacity, FlatList, Dimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from "react-native-vector-icons/MaterialIcons";
-import AsyncStorage from "@react-native-async-storage/async-storage"; // Import AsyncStorage
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Voice from "@react-native-voice/voice";
 import { ActivityIndicator } from "react-native";
 
@@ -12,8 +12,7 @@ const Dashboard = ({ navigation }) => {
   const [isListening, setIsListening] = useState(false);
   const [recognizedText, setRecognizedText] = useState("");
 
-  // Function to store the user's response and timestamp
-  const storeFeedback = async (response:any) => {
+  const storeFeedback = async (response: any) => {
     try {
       const timestamp = new Date().toLocaleString();
       await AsyncStorage.setItem("latestInteraction", response);
@@ -25,59 +24,57 @@ const Dashboard = ({ navigation }) => {
   };
 
   useEffect(() => {
-  Voice.onSpeechResults = onSpeechResultsHandler;
-  Voice.onSpeechError = onSpeechErrorHandler;
+    Voice.onSpeechResults = onSpeechResultsHandler;
+    Voice.onSpeechError = onSpeechErrorHandler;
 
-  return () => {
-    Voice.destroy().then(Voice.removeAllListeners);
-  };
-}, []);
+    return () => {
+      Voice.destroy().then(Voice.removeAllListeners);
+    };
+  }, []);
 
-const onSpeechResultsHandler = (e:any) => {
-  const text = e.value[0];
-  setRecognizedText(text);
-//   sendToBackend(text);
+  const onSpeechResultsHandler = (e: any) => {
+    const text = e.value[0];
+    setRecognizedText(text);
     Alert.alert(text);
-  setIsListening(false);
-};
-
-const onSpeechErrorHandler = (e:any) => {
-  console.error("Speech recognition error: ", e);
-  Alert.alert("Error", "Could not recognize speech. Try again.");
-  setIsListening(false);
-};
-
-const startListening = async () => {
-  try {
-    setIsListening(true);
-    setRecognizedText("");
-    await Voice.start("en-US");
-  } catch (error) {
-    console.error("Voice start error: ", error);
     setIsListening(false);
-  }
-};
+  };
 
-const sendToBackend = async (text: string) => {
-  try {
-    const response = await fetch("https://your-api-endpoint.com/voice-input", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ query: text }),
-    });
+  const onSpeechErrorHandler = (e: any) => {
+    console.error("Speech recognition error: ", e);
+    Alert.alert("Error", "Could not recognize speech. Try again.");
+    setIsListening(false);
+  };
 
-    const data = await response.json();
-    console.log("Backend response:", data);
-    Alert.alert("Response", data.reply || "Got it!");
-  } catch (error) {
-    console.error("Error sending to backend:", error);
-    Alert.alert("Error", "Failed to send to backend");
-  }
-};
+  const startListening = async () => {
+    try {
+      setIsListening(true);
+      setRecognizedText("");
+      await Voice.start("en-US");
+    } catch (error) {
+      console.error("Voice start error: ", error);
+      setIsListening(false);
+    }
+  };
 
-  // Feedback check every 4 hours
+  const sendToBackend = async (text: string) => {
+    try {
+      const response = await fetch("https://your-api-endpoint.com/voice-input", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query: text }),
+      });
+
+      const data = await response.json();
+      console.log("Backend response:", data);
+      Alert.alert("Response", data.reply || "Got it!");
+    } catch (error) {
+      console.error("Error sending to backend:", error);
+      Alert.alert("Error", "Failed to send to backend");
+    }
+  };
+
   useEffect(() => {
     const checkFeedback = () => {
       const now = new Date();
@@ -86,27 +83,9 @@ const sendToBackend = async (text: string) => {
           "How Are You?",
           "Hello! How are you feeling right now?",
           [
-            {
-              text: "Good",
-              onPress: () => {
-                console.log("Good");
-                storeFeedback("I’m feeling good");
-              },
-            },
-            {
-              text: "Okay",
-              onPress: () => {
-                console.log("Okay");
-                storeFeedback("I’m feeling okay");
-              },
-            },
-            {
-              text: "Not Great",
-              onPress: () => {
-                console.log("Not Great");
-                storeFeedback("I’m not feeling great");
-              },
-            },
+            { text: "Good", onPress: () => storeFeedback("I’m feeling good") },
+            { text: "Okay", onPress: () => storeFeedback("I’m feeling okay") },
+            { text: "Not Great", onPress: () => storeFeedback("I’m not feeling great") },
           ]
         );
         setLastFeedbackTime(now);
@@ -121,7 +100,6 @@ const sendToBackend = async (text: string) => {
     return () => clearInterval(interval);
   }, [lastFeedbackTime]);
 
-  // Proactive prompts every 30 seconds (for demo purposes)
   useEffect(() => {
     const prompts = [
       { message: "Good morning! The weather today is sunny, 72°F. Would you like to go for a walk?", action: "suggestWalk" },
@@ -133,64 +111,32 @@ const sendToBackend = async (text: string) => {
     const interval = setInterval(() => {
       const randomPrompt = prompts[Math.floor(Math.random() * prompts.length)];
       setProactivePrompt(randomPrompt);
-    }, 30000); // 30 seconds for demo; adjust as needed
+    }, 30000);
 
     return () => clearInterval(interval);
   }, []);
 
-  // Handle prompt responses
   const handlePromptResponse = (action, response) => {
     if (action === "suggestWalk") {
-      if (response === "yes") {
-        Alert.alert("Great!", "Let’s plan a short walk. I’ll remind you in 10 minutes.");
-      } else {
-        Alert.alert("Okay", "Maybe later! Let me know if you change your mind.");
-      }
+      response === "yes"
+        ? Alert.alert("Great!", "Let’s plan a short walk. I’ll remind you in 10 minutes.")
+        : Alert.alert("Okay", "Maybe later!");
     } else if (action === "suggestMusic") {
-      if (response === "yes") {
-        navigation.navigate("Music");
-      } else {
-        Alert.alert("Okay", "Let me know if you’d like to listen to music later!");
-      }
+      response === "yes" ? navigation.navigate("Music") : Alert.alert("Okay", "Let me know later!");
     } else if (action === "suggestContact") {
-      if (response === "yes") {
-        navigation.navigate("Call");
-      } else {
-        Alert.alert("Okay", "I’ll check back later!");
-      }
+      response === "yes" ? navigation.navigate("Call") : Alert.alert("Okay", "I’ll check back later!");
     } else if (action === "suggestMessages") {
-      if (response === "yes") {
-        navigation.navigate("Messages");
-      } else {
-        Alert.alert("Okay", "You can check your messages later!");
-      }
+      response === "yes" ? navigation.navigate("Messages") : Alert.alert("Okay", "Check your messages later!");
     }
     setProactivePrompt(null);
   };
 
-  // Sample reminder data
   const reminders = [
-    {
-      id: "1",
-      title: "Take your medicine",
-      subtitle: "9:00 A.M. Blood Pressure",
-      icon: "local-pharmacy",
-    },
-    {
-      id: "2",
-      title: "Morning walk",
-      subtitle: "10:00 AM - 15 minutes",
-      icon: "directions-walk",
-    },
-    {
-      id: "3",
-      title: "TG5",
-      subtitle: "11:00 AM - 60 minutes",
-      icon: "tv",
-    },
+    { id: "1", title: "Take your medicine", subtitle: "9:00 A.M. Blood Pressure", icon: "local-pharmacy" },
+    { id: "2", title: "Morning walk", subtitle: "10:00 AM - 15 minutes", icon: "directions-walk" },
+    { id: "3", title: "TG5", subtitle: "11:00 AM - 60 minutes", icon: "tv" },
   ];
 
-  // Render each reminder item
   const renderReminder = ({ item }) => (
     <TouchableOpacity style={styles.reminderItem}>
       <Icon name={item.icon} size={30} color="#00351D" style={styles.reminderIcon} />
@@ -204,33 +150,29 @@ const sendToBackend = async (text: string) => {
   return (
     <SafeAreaView style={styles.container}>
       {/* Header Section */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={() => navigation.navigate("Menu")}
-        >
-          <Icon name="menu" size={35} color="#333" />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
-          <Icon name="account-circle" size={35} color="#333" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={() => navigation.navigate("Notifications")}
-        >
-          <View style={styles.notificationIcon}>
-            <Icon name="notifications" size={24} color="#333" />
-            <View style={styles.notificationBadge}>
-              <Text style={styles.notificationBadgeText}>1</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </View>
+    <View style={styles.header}>
+  <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
+    <Icon name="account-circle" size={35} color="#333" />
+  </TouchableOpacity>
 
-      {/* Placeholder for the blurred card number */}
+  <View style={{ width: 35 }} /> {/* Empty space for alignment (no center icon now) */}
+
+  <TouchableOpacity
+    style={styles.headerButton}
+    onPress={() => navigation.navigate("Notifications")}
+  >
+    <View style={styles.notificationIcon}>
+      <Icon name="notifications" size={24} color="#333" />
+      <View style={styles.notificationBadge}>
+        <Text style={styles.notificationBadgeText}>1</Text>
+      </View>
+    </View>
+  </TouchableOpacity>
+</View>
+
+
       <Text style={styles.cardNumber}>xxxxxxxxxxxxxxxxxxxx</Text>
 
-      {/* Proactive Prompt */}
       {proactivePrompt && (
         <View style={styles.promptContainer}>
           <Text style={styles.promptText}>{proactivePrompt.message}</Text>
@@ -251,34 +193,33 @@ const sendToBackend = async (text: string) => {
         </View>
       )}
 
-      {/* Microphone and Surrounding Icons Section */}
+      {/* Microphone Section */}
       <View style={styles.iconContainer}>
-        {/* Microphone Button */}
         <TouchableOpacity
-        style={styles.microphoneButton}
-        onPress={startListening}
-        disabled={isListening}
+          style={styles.microphoneButton}
+          onPress={startListening}
+          disabled={isListening}
         >
-        {isListening ? (
+          {isListening ? (
             <ActivityIndicator size="large" color="#000" />
-        ) : (
+          ) : (
             <Icon name="mic" size={50} color="#000" />
-        )}
+          )}
         </TouchableOpacity>
 
-        {/* Row of Buttons (Music, Call, Message) */}
+        {/* Family, Health, and Message Buttons */}
         <View style={styles.buttonRow}>
           <TouchableOpacity
-            style={[styles.smallButton, styles.musicButton]}
-            onPress={() => navigation.navigate("Music")}
+            style={[styles.smallButton, styles.familyButton]}
+            onPress={() => navigation.navigate("FamilyMemberScreen")}
           >
-            <Icon name="headset" size={45} color="#000" />
+            <Icon name="group" size={45} color="#000" />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.smallButton, styles.callButton]}
-            onPress={() => navigation.navigate("Call")}
+            style={[styles.smallButton, styles.healthButton]}
+            onPress={() => navigation.navigate("HealthTrackingScreen")}
           >
-            <Icon name="call" size={45} color="#000" />
+            <Icon name="health-and-safety" size={45} color="#000" />
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.smallButton, styles.messageButton]}
@@ -289,7 +230,6 @@ const sendToBackend = async (text: string) => {
         </View>
       </View>
 
-      {/* Reminder List */}
       <FlatList
         data={reminders}
         renderItem={renderReminder}
@@ -300,7 +240,6 @@ const sendToBackend = async (text: string) => {
   );
 };
 
-// Get screen width for dynamic sizing
 const { width } = Dimensions.get("window");
 
 const styles = StyleSheet.create({
@@ -424,7 +363,6 @@ const styles = StyleSheet.create({
   },
   smallButton: {
     backgroundColor: "#FFF",
-    width: 80,
     height: 80,
     borderRadius: 40,
     alignItems: "center",
@@ -438,9 +376,6 @@ const styles = StyleSheet.create({
     borderColor: "#E6F0FA",
     width: width * 0.333 - 20,
   },
-  musicButton: {},
-  callButton: {},
-  messageButton: {},
   reminderList: {
     flex: 1,
   },
