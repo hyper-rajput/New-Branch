@@ -14,15 +14,18 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createUser } from '../services/api';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const SignUpScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [isFamilyMember, setIsFamilyMember] = useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
 
   const handleSignUp = async () => {
-    // Add validation logic here if needed
     if (!email || !password || !confirmPassword) {
       Alert.alert('Please fill in all fields.');
       return;
@@ -35,14 +38,13 @@ const SignUpScreen = ({ navigation }) => {
 
     try {
       await createUser(email, password);
-      navigation.navigate('ProfileSetupScreen'); // example
+      navigation.navigate('ProfileSetupScreen');
     } catch (err) {
-
-        if (err instanceof Error) {
-            Alert.alert('Error:', err.message);
-        } else {
-            console.error('Unknown error:', err);
-        }
+      if (err instanceof Error) {
+        Alert.alert('Error:', err.message);
+      } else {
+        console.error('Unknown error:', err);
+      }
     }
   };
 
@@ -68,34 +70,82 @@ const SignUpScreen = ({ navigation }) => {
               value={email}
               onChangeText={setEmail}
             />
-            <TextInput
-              style={styles.input}
-              placeholder="Password"
-              placeholderTextColor="#A0A0A0"
-              secureTextEntry
-              value={password}
-              onChangeText={setPassword}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Confirm Password"
-              placeholderTextColor="#A0A0A0"
-              secureTextEntry
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-            />
+
+            {/* Password Field with Eye Icon */}
+            <View style={styles.passwordContainer}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="Password"
+                placeholderTextColor="#A0A0A0"
+                secureTextEntry={!passwordVisible}
+                value={password}
+                onChangeText={setPassword}
+              />
+              <TouchableOpacity
+                style={styles.eyeButton}
+                onPress={() => setPasswordVisible((prev) => !prev)}
+              >
+                <Ionicons
+                  name={passwordVisible ? 'eye' : 'eye-off'}
+                  size={22}
+                  color="#6B7280"
+                />
+              </TouchableOpacity>
+            </View>
+
+            {/* Confirm Password Field with Eye Icon */}
+            <View style={styles.passwordContainer}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="Confirm Password"
+                placeholderTextColor="#A0A0A0"
+                secureTextEntry={!confirmPasswordVisible}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+              />
+              <TouchableOpacity
+                style={styles.eyeButton}
+                onPress={() => setConfirmPasswordVisible((prev) => !prev)}
+              >
+                <Ionicons
+                  name={confirmPasswordVisible ? 'eye' : 'eye-off'}
+                  size={22}
+                  color="#6B7280"
+                />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => setIsFamilyMember(prev => !prev)}
+              style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}
+            >
+              <View style={{
+                height: 20,
+                width: 20,
+                borderRadius: 4,
+                borderWidth: 1,
+                borderColor: '#3B82F6',
+                backgroundColor: isFamilyMember ? '#3B82F6' : 'transparent',
+                marginRight: 8,
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}>
+                {isFamilyMember && <Text style={{ color: 'white', fontSize: 14 }}>✓</Text>}
+              </View>
+              <Text style={{ color: '#374151', fontSize: 14 }}>
+                This account is for a family member
+              </Text>
+            </TouchableOpacity>
 
             <TouchableOpacity style={styles.button} onPress={handleSignUp}>
               <Text style={styles.buttonText}>Create Account</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={handleSignUp}>
+            <TouchableOpacity onPress={() => navigation.navigate("LoginScreen")}>
               <Text style={styles.registerText}>
                 Already have an account? <Text style={styles.highlight}>Login</Text>
               </Text>
             </TouchableOpacity>
-
-            
           </ScrollView>
         </KeyboardAvoidingView>
       </TouchableWithoutFeedback>
@@ -138,6 +188,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     fontSize: 16,
     marginBottom: 10,
+    color: 'black',
+  },
+  passwordContainer: {
+    width: '100%',
+    height: 50,
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 10,
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    marginBottom: 10,
+  },
+  passwordInput: {
+    flex: 1,
+    fontSize: 16,
+    color: 'black',
+  },
+  eyeButton: {
+    padding: 5,
   },
   button: {
     backgroundColor: '#3B82F6',

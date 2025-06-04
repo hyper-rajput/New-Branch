@@ -8,95 +8,136 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { loginUser } from "../services/api";
-import Ionicons from 'react-native-vector-icons/Ionicons';
- // or 'react-native-vector-icons/Ionicons'
+import Ionicons from "react-native-vector-icons/Ionicons";
 
 const LoginScreen = ({ navigation }) => {
   const [emailOrPhone, setEmailOrPhone] = useState("");
   const [password, setPassword] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const [isFamilyMember, setIsFamilyMember] = useState(false);
+  const [loading, setLoading] = useState(false); // <-- Loader state
 
-  const handleLogin = async () => {
-    if (emailOrPhone && password) {
-      try {
-        const result = await loginUser(emailOrPhone, password);
+const handleLogin = async () => {
+  if (emailOrPhone && password) {
+    setLoading(true); // Show loader
+    try {
+      const result = await loginUser(emailOrPhone, password);
 
-        if (result.status === "success") {
-          navigation.navigate("Dashboard");
-        } else {
-          Alert.alert("Error", result.message || "Unknown error");
-        }
-      } catch (error) {
-        Alert.alert("Login Failed", error.message || "An unexpected error occurred.");
-        console.error("Login error:", error);
+      if (result.status === "success") {
+        // Navigate without resetting loading state to avoid screen flash
+        navigation.reset({
+          index: 0,
+          routes: [{ name: "Dashboard" }],
+        });
+      } else {
+        setLoading(false);
+        Alert.alert("Error", result.message || "Unknown error");
       }
-    } else {
-      Alert.alert("Email/Phone and password are required.");
+    } catch (error) {
+      setLoading(false);
+      Alert.alert("Login Failed", error.message || "An unexpected error occurred.");
+      console.error("Login error:", error);
     }
-  };
+  } else {
+    Alert.alert("Email/Phone and password are required.");
+  }
+};
+
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={{ flex: 1, justifyContent: "center", width: "100%" }}
-      >
-        <View style={styles.innerContainer}>
-          <Text style={styles.title}>
-            Welcome <Text style={styles.highlight}>Back!</Text>
-          </Text>
-          <Text style={styles.subtitle}>Our Journey to Well-being Continues Here.</Text>
+      {loading ? (
+        <View style={styles.loaderContainer}>
+          <ActivityIndicator size="large" color="#3B82F6"
+           style={{ transform: [{ scale: 1.5 }] }} />
 
-          <TextInput
-            style={styles.input}
-            placeholder="Email or Phone Number"
-            placeholderTextColor="#A0A0A0"
-            keyboardType="email-address"
-            value={emailOrPhone}
-            onChangeText={setEmailOrPhone}
-          />
+          <Text style={styles.loadingText}>Logging in...</Text>
+        </View>
+      ) : (
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={{ flex: 1, justifyContent: "center", width: "100%" }}
+        >
+          <View style={styles.innerContainer}>
+            <Text style={styles.title}>
+              Welcome <Text style={styles.highlight}>Back!</Text>
+            </Text>
+            <Text style={styles.subtitle}>Our Journey to Well-being Continues Here.</Text>
 
-          {/* Password Input with Eye Toggle */}
-          <View style={styles.passwordContainer}>
             <TextInput
-              style={styles.passwordInput}
-              placeholder="Password"
+              style={styles.input}
+              placeholder="Email or Phone Number"
               placeholderTextColor="#A0A0A0"
-              secureTextEntry={!passwordVisible}
-              value={password}
-              onChangeText={setPassword}
+              keyboardType="email-address"
+              value={emailOrPhone}
+              onChangeText={setEmailOrPhone}
             />
-            <TouchableOpacity
-              style={styles.eyeButton}
-              onPress={() => setPasswordVisible((prev) => !prev)}
-            >
-              <Ionicons
-                name={passwordVisible ? "eye" : "eye-off"}
-                size={22}
-                color="#6B7280"
+
+            <View style={styles.passwordContainer}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="Password"
+                placeholderTextColor="#A0A0A0"
+                secureTextEntry={!passwordVisible}
+                value={password}
+                onChangeText={setPassword}
               />
+              <TouchableOpacity
+                style={styles.eyeButton}
+                onPress={() => setPasswordVisible((prev) => !prev)}
+              >
+                <Ionicons
+                  name={passwordVisible ? "eye" : "eye-off"}
+                  size={22}
+                  color="#6B7280"
+                />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity>
+              <Text style={styles.forgotPassword}>Forgot Password?</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setIsFamilyMember((prev) => !prev)}
+              style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}
+            >
+              <View
+                style={{
+                  height: 20,
+                  width: 20,
+                  borderRadius: 4,
+                  borderWidth: 1,
+                  borderColor: "#3B82F6",
+                  backgroundColor: isFamilyMember ? "#3B82F6" : "transparent",
+                  marginRight: 8,
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
+              >
+                {isFamilyMember && <Text style={{ color: "white", fontSize: 14 }}>✓</Text>}
+              </View>
+              <Text style={{ color: "#374151", fontSize: 14 }}>
+                This account is for a family member
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.button} onPress={handleLogin}>
+              <Text style={styles.buttonText}>Let's Begin</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => navigation.navigate("SignUpScreen")}>
+              <Text style={styles.registerText}>
+                New here? <Text style={styles.highlight}>Register now</Text>
+              </Text>
             </TouchableOpacity>
           </View>
-
-          <TouchableOpacity>
-            <Text style={styles.forgotPassword}>Forgot Password?</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.button} onPress={handleLogin}>
-            <Text style={styles.buttonText}>Let's Begin</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity onPress={() => navigation.navigate("SignUpScreen")}>
-            <Text style={styles.registerText}>
-              New here? <Text style={styles.highlight}>Register now</Text>
-            </Text>
-          </TouchableOpacity>
-
-        </View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      )}
     </SafeAreaView>
   );
 };
@@ -179,12 +220,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#6B7280",
   },
-  footer: {
-    marginTop: 20,
-    fontSize: 12,
-    color: "#6B7280",
-    textAlign: "center",
-    paddingHorizontal: 10,
+  loaderContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: "#3B82F6",
   },
 });
 

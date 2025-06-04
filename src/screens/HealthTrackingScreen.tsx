@@ -187,7 +187,7 @@ const HealthTrackingScreen = ({ navigation, route }) => {
             <MaterialIcons name="medication" size={28} color="#D32F2F" style={styles.inputIcon} />
             <TextInput
               style={styles.input}
-              placeholder="Dosage (mg)"
+              placeholder="Dosage"
               keyboardType="numeric"
               value={dosage}
               onChangeText={setDosage}

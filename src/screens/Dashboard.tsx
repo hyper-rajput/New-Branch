@@ -151,7 +151,7 @@ const Dashboard = ({ navigation }) => {
     <SafeAreaView style={styles.container}>
       {/* Header Section */}
     <View style={styles.header}>
-  <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
+  <TouchableOpacity onPress={() => navigation.navigate("ProfileScreen")}>
     <Icon name="account-circle" size={35} color="#333" />
   </TouchableOpacity>
 
