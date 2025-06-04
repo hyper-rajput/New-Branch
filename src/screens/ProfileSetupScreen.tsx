@@ -64,13 +64,30 @@ const ProfileSetupScreen = ({ navigation }) => {
   const [dob, setDob] = useState("");
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [tempDate, setTempDate] = useState(new Date(2000, 0, 1));
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
+  const [height, setHeight] = useState("");
+  const [weight, setWeight] = useState("");
+  const [bloodGroup, setBloodGroup] = useState("");
   const [hobby, setHobby] = useState("");
   const [customHobby, setCustomHobby] = useState("");
   const [emergencyContact, setEmergencyContact] = useState("");
   const [medName, setMedName] = useState("");
   const [medDosage, setMedDosage] = useState("");
+  const [medicalHistory, setMedicalHistory] = useState("");
+  const [customMedicalHistory, setCustomMedicalHistory] = useState("");
 
   const hobbyOptions = ["Walking", "Reading", "Gardening", "Knitting", "Puzzles", "Other"];
+  const bloodGroupOptions = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+  const medicalHistoryOptions = [
+    "Diabetes",
+    "High Blood Pressure",
+    "Arthritis",
+    "Heart Disease",
+    "Asthma",
+    "None",
+    "Other",
+  ];
 
   const handleSubmit = async () => {
     if (!name || !dob) {
@@ -81,9 +98,16 @@ const ProfileSetupScreen = ({ navigation }) => {
     const profile = {
       name,
       dob,
+      phone,
+      address,
+      height,
+      weight,
+      bloodGroup,
       hobby: hobby === "Other" ? customHobby : hobby,
       emergencyContact: emergencyContact || "None",
       medication: medName && medDosage ? `${medName} - ${medDosage}` : "None",
+     medicalHistory: medicalHistory + (customMedicalHistory ? ` - ${customMedicalHistory}` : ""),
+
     };
 
     try {
@@ -164,6 +188,55 @@ const ProfileSetupScreen = ({ navigation }) => {
 
               <TextInput
                 style={styles.customInput}
+                placeholder="Phone Number"
+                value={phone}
+                onChangeText={setPhone}
+                keyboardType="phone-pad"
+                placeholderTextColor="#666"
+              />
+
+       {/* Address Field */}
+<TextInput
+  style={[styles.customInput, styles.multiLineInput]}
+  placeholder="Enter your full address here"
+  value={address}
+  onChangeText={setAddress}
+  placeholderTextColor="#666"
+  multiline
+  numberOfLines={4}
+  textAlignVertical="top"
+/>
+
+{/* Height and Weight Fields Side by Side */}
+<View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+  <TextInput
+    style={[styles.customInput, { flex: 1, marginRight: 8 }]}
+    placeholder="Height (cm)"
+    value={height}
+    onChangeText={setHeight}
+    keyboardType="numeric"
+    placeholderTextColor="#666"
+  />
+  <TextInput
+    style={[styles.customInput, { flex: 1, marginLeft: 8 }]}
+    placeholder="Weight (kg)"
+    value={weight}
+    onChangeText={setWeight}
+    keyboardType="numeric"
+    placeholderTextColor="#666"
+  />
+</View>
+
+
+              <CustomDropdown
+                label="Blood Group"
+                value={bloodGroup}
+                options={bloodGroupOptions}
+                onSelect={setBloodGroup}
+              />
+
+              <TextInput
+                style={styles.customInput}
                 placeholder="Emergency Contact (Optional)"
                 value={emergencyContact}
                 onChangeText={setEmergencyContact}
@@ -195,19 +268,42 @@ const ProfileSetupScreen = ({ navigation }) => {
               <Text style={styles.sectionTitle}>Medication</Text>
               <TextInput
                 style={styles.customInput}
-                placeholder="Medication Name (e.g., Paracetamol)"
+                placeholder="Medication Name"
                 value={medName}
                 onChangeText={setMedName}
                 placeholderTextColor="#666"
               />
               <TextInput
                 style={styles.customInput}
-                placeholder="Dosage (e.g., 625mg)"
+                placeholder="Dosage"
                 value={medDosage}
                 onChangeText={setMedDosage}
                 keyboardType="numeric"
                 placeholderTextColor="#666"
               />
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Medical History</Text>
+              <CustomDropdown
+                label="Select Condition"
+                value={medicalHistory}
+                options={medicalHistoryOptions}
+                onSelect={setMedicalHistory}
+              />
+              
+              <TextInput
+  style={[styles.customInput, styles.multiLineInput]}
+  placeholder="Describe your experience or specific condition (optional)"
+  value={customMedicalHistory}
+  onChangeText={setCustomMedicalHistory}
+  placeholderTextColor="#666"
+  multiline
+  numberOfLines={4}
+  textAlignVertical="top"
+/>
+
+              
             </View>
 
             <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
@@ -251,18 +347,18 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   sectionTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "600",
-    marginBottom: 10,
+    marginBottom: 12,
     color: "#2E2E2E",
   },
   customInput: {
     borderWidth: 1,
     borderColor: "#DDD",
     borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    marginBottom: 12,
+    padding: 16,
+    fontSize: 18,
+    marginBottom: 14,
     color: "#2E2E2E",
   },
   inputContainer: {
@@ -272,26 +368,31 @@ const styles = StyleSheet.create({
     borderColor: "#DDD",
     borderRadius: 8,
     paddingHorizontal: 10,
-    marginBottom: 12,
+    marginBottom: 14,
   },
   inputIcon: {
     marginRight: 8,
   },
   input: {
-    fontSize: 16,
+    fontSize: 18,
     flex: 1,
   },
+  multiLineInput: {
+  height: 100,
+  paddingVertical: 10,
+}
+,
   dropdown: {
     flexDirection: "row",
     justifyContent: "space-between",
     borderWidth: 1,
     borderColor: "#DDD",
     borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
+    padding: 16,
+    marginBottom: 14,
   },
   dropdownText: {
-    fontSize: 16,
+    fontSize: 18,
     color: "#2E2E2E",
   },
   modalOverlay: {
@@ -306,22 +407,48 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   modalItem: {
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   modalItemText: {
-    fontSize: 16,
+    fontSize: 18,
     color: "#2E2E2E",
   },
+
+unitInputContainer: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  borderWidth: 1,
+  borderColor: '#DDD',
+  borderRadius: 8,
+  paddingHorizontal: 10,
+  marginBottom: 12,
+  backgroundColor: '#FFF',
+},
+
+unitInput: {
+  fontSize: 16,
+  paddingVertical: 12,
+  color: '#2E2E2E',
+},
+
+unitLabel: {
+  fontSize: 16,
+  marginLeft: 6,
+  color: '#555',
+  fontWeight: '500',
+},
+
   submitButton: {
     backgroundColor: "#FF7043",
-    padding: 16,
-    borderRadius: 12,
+    padding: 18,
+    borderRadius: 14,
     alignItems: "center",
+    marginTop: 10,
   },
   submitButtonText: {
     color: "#FFF",
-    fontSize: 18,
-    fontWeight: "600",
+    fontSize: 20,
+    fontWeight: "700",
   },
 });
 
