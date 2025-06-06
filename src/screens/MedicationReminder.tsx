@@ -18,7 +18,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import Slider from "@react-native-community/slider";
 import notifee, { AndroidImportance, TimestampTrigger, TriggerType } from '@notifee/react-native';
 import Sound from 'react-native-sound';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 
 // Define types for medicine data
 interface Medicine {
@@ -36,7 +36,6 @@ interface Medicine {
   refillDays: number;
   refillDate: Date;
   startFromToday: boolean;
-  fromHealthTracking?: boolean;
   initialQuantity?: number;
   dailyIntake?: number;
 }
@@ -46,6 +45,9 @@ const SafeAreaComponent = Platform.OS === "ios" ? SafeAreaView : View;
 
 const MedicationReminder: React.FC = () => {
   const navigation = useNavigation();
+  const route = useRoute();
+  const { newMedicineFromHealth, medicines: initialMedicines } = route.params || {};
+
   const [medicineName, setMedicineName] = useState<string>("");
   const [dosage, setDosage] = useState<string>("");
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
@@ -67,38 +69,56 @@ const MedicationReminder: React.FC = () => {
   const [showRefillDaysPicker, setShowRefillDaysPicker] = useState<boolean>(false);
   const [refillReminderText, setRefillReminderText] = useState<string>("");
   const [startFromToday, setStartFromToday] = useState<boolean>(false);
-  const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [medicines, setMedicines] = useState<Medicine[]>(initialMedicines || []);
   const [sound, setSound] = useState<Sound | null>(null);
 
+  // Pre-populate form fields with data from HealthTrackingScreen
   useEffect(() => {
-    // Initialize notification channel for Android
-    if (Platform.OS === "android") {
-      notifee.createChannel({
-        id: "default",
-        name: "Default Channel",
-        importance: AndroidImportance.HIGH,
-        vibration: true,
-        lightColor: "#FF231F7C",
-        sound: "default",
-      });
+    if (newMedicineFromHealth) {
+      setMedicineName(newMedicineFromHealth.name || "");
+      setDosage(newMedicineFromHealth.dosage || "");
+      setAmountPerBox(newMedicineFromHealth.initialQuantity || 10);
+      setCurrentQuantity(newMedicineFromHealth.currentQuantity || 10);
+
+      // Prompt user to set reminder time
+      Alert.alert("Set Reminder", "Please set the reminder time for your medicine.");
     }
+  }, [newMedicineFromHealth]);
 
-    // Request notification permissions
-    registerForPushNotifications();
-
-    // Listen for foreground notification events
-    const subscription = notifee.onForegroundEvent(async ({ type, detail }) => {
-      if (type === notifee.EventType.DELIVERED) {
-        const medicineId = detail.notification?.data?.medicineId as string;
-        const medicine = medicines.find((m) => m.id === medicineId);
-        if (medicine && medicine.ringPhone) await playSound();
+  // Setup notifications
+  useEffect(() => {
+    const setupNotifications = async () => {
+      // Initialize notification channel for Android
+      if (Platform.OS === "android") {
+        await notifee.createChannel({
+          id: "default",
+          name: "Default Channel",
+          importance: AndroidImportance.HIGH,
+          vibration: true,
+          lightColor: "#FF231F7C",
+          sound: "default",
+        });
       }
-    });
 
-    return () => {
-      subscription();
-      if (sound) sound.release();
+      // Request notification permissions
+      await registerForPushNotifications();
+
+      // Listen for foreground notification events
+      const subscription = notifee.onForegroundEvent(async ({ type, detail }) => {
+        if (type === notifee.EventType.DELIVERED) {
+          const medicineId = detail.notification?.data?.medicineId as string;
+          const medicine = medicines.find((m) => m.id === medicineId);
+          if (medicine && medicine.ringPhone) await playSound();
+        }
+      });
+
+      return () => {
+        subscription();
+        if (sound) sound.release();
+      };
     };
+
+    setupNotifications();
   }, [medicines]);
 
   const registerForPushNotifications = async () => {
@@ -200,6 +220,7 @@ const MedicationReminder: React.FC = () => {
       duration: new Date(duration),
       amountPerBox,
       currentQuantity,
+      initialQuantity: currentQuantity,
       enableTakeAlert,
       ringPhone,
       sendMessage,
@@ -207,7 +228,6 @@ const MedicationReminder: React.FC = () => {
       refillDays,
       refillDate: new Date(refillDate),
       startFromToday,
-      fromHealthTracking: false,
     };
 
     setMedicines((prev) => [...prev, newMedicine]);
@@ -333,31 +353,20 @@ const MedicationReminder: React.FC = () => {
         <Icon name="local-pharmacy" size={24} color="#00351D" style={styles.medicineIcon} />
         <Text style={styles.memberText}>{item.name}</Text>
       </View>
-      {item.fromHealthTracking ? (
-        <>
-          <Text style={styles.statusText}>Initial Quantity: {item.initialQuantity}</Text>
-          <Text style={styles.statusText}>Current Quantity: {item.currentQuantity}</Text>
-          <Text style={styles.statusText}>Daily Intake: {item.dailyIntake} pill(s)</Text>
-          <Text style={styles.promptText}>Please add timing and notification details above.</Text>
-        </>
-      ) : (
-        <>
-          <Text style={styles.statusText}>Dosage: {item.dosage}</Text>
-          <Text style={styles.statusText}>
-            Time: {item.time ? item.time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Not set"}
-          </Text>
-          <Text style={styles.statusText}>
-            Until: {item.duration ? item.duration.toLocaleDateString() : "Not set"}
-          </Text>
-          <Text style={styles.statusText}>
-            Quantity: {item.currentQuantity}/{item.amountPerBox}
-          </Text>
-          {item.refillReminder && (
-            <Text style={styles.statusText}>
-              Refill: {item.refillDate ? item.refillDate.toLocaleDateString() : "Not set"} ({item.refillDays} days before)
-            </Text>
-          )}
-        </>
+      <Text style={styles.statusText}>Dosage: {item.dosage}</Text>
+      <Text style={styles.statusText}>
+        Time: {item.time ? item.time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Not set"}
+      </Text>
+      <Text style={styles.statusText}>
+        Until: {item.duration ? item.duration.toLocaleDateString() : "Not set"}
+      </Text>
+      <Text style={styles.statusText}>
+        Quantity: {item.currentQuantity}/{item.amountPerBox}
+      </Text>
+      {item.refillReminder && (
+        <Text style={styles.statusText}>
+          Refill: {item.refillDate ? item.refillDate.toLocaleDateString() : "Not set"} ({item.refillDays} days before)
+        </Text>
       )}
       <View style={styles.buttonContainer}>
         <TouchableOpacity
@@ -367,15 +376,13 @@ const MedicationReminder: React.FC = () => {
         >
           <Text style={styles.buttonText}>Delete</Text>
         </TouchableOpacity>
-        {!item.fromHealthTracking && (
-          <TouchableOpacity
-            style={[styles.button, styles.approveButton]}
-            onPress={() => confirmIntake(item.id)}
-            accessibilityLabel={`Confirm intake for ${item.name}`}
-          >
-            <Text style={styles.buttonText}>Confirm</Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity
+          style={[styles.button, styles.approveButton]}
+          onPress={() => confirmIntake(item.id)}
+          accessibilityLabel={`Confirm intake for ${item.name}`}
+        >
+          <Text style={styles.buttonText}>Confirm</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -456,7 +463,7 @@ const MedicationReminder: React.FC = () => {
               <Slider
                 style={styles.slider}
                 minimumValue={1}
-                maximumValue={20}
+                maximumValue={100}
                 step={1}
                 value={amountPerBox}
                 onValueChange={setAmountPerBox}
@@ -469,7 +476,7 @@ const MedicationReminder: React.FC = () => {
               <Slider
                 style={styles.slider}
                 minimumValue={1}
-                maximumValue={20}
+                maximumValue={amountPerBox}
                 step={1}
                 value={currentQuantity}
                 onValueChange={setCurrentQuantity}
@@ -842,12 +849,6 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 14,
     fontWeight: '500',
-  },
-  promptText: {
-    fontSize: 14,
-    color: '#DC2626',
-    marginTop: 4,
-    fontStyle: 'italic',
   },
   confirmationText: {
     fontSize: 14,

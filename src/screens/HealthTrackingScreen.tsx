@@ -73,7 +73,8 @@ const HealthTrackingScreen = ({ navigation, route }) => {
       fromHealthTracking: true,
     };
 
-    setMedicines([...medicines, newMedicine]);
+    const updatedMedicines = [...medicines, newMedicine];
+    setMedicines(updatedMedicines);
     Alert.alert("Success!", `${medicineName} has been added to your list.`, [
       { text: "OK", style: "default" }
     ]);
@@ -139,12 +140,13 @@ const HealthTrackingScreen = ({ navigation, route }) => {
       newMedicineFromHealth: {
         id: medicine.id,
         name: medicine.name,
-        dosage: `${medicine.dailyIntake} pill(s) of ${medicine.dosage}mg`, // Formatted for MedicationReminder
+        dosage: `${medicine.dailyIntake} pill(s) of ${medicine.dosage}mg`,
         initialQuantity: medicine.initialQuantity,
         currentQuantity: medicine.currentQuantity,
+        dailyIntake: medicine.dailyIntake,
         fromHealthTracking: true,
       },
-      medicines,
+      medicines: medicines, // Pass the full medicines array
     });
   };
 
@@ -187,7 +189,7 @@ const HealthTrackingScreen = ({ navigation, route }) => {
             <MaterialIcons name="medication" size={28} color="#D32F2F" style={styles.inputIcon} />
             <TextInput
               style={styles.input}
-              placeholder="Dosage"
+              placeholder="Dosage (in mg)"
               keyboardType="numeric"
               value={dosage}
               onChangeText={setDosage}
