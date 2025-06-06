@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Icon from "react-native-vector-icons/MaterialIcons";
+import { logout } from "../services/api";
 
 const ProfileScreen = ({ navigation }) => {
   const [userData, setUserData] = useState({
@@ -39,11 +40,15 @@ const ProfileScreen = ({ navigation }) => {
 
   const handleLogout = async () => {
     try {
-      await AsyncStorage.clear();
-      navigation.replace("LoginScreen");
+      await logout
+              navigation.reset({
+          index: 0,
+          routes: [{ name: "LoginScreen" }],
+        });
     } catch (error) {
       Alert.alert("Error", "Failed to logout. Try again.");
     }
+    navigation.navigate("LoginScreen");
   };
 
   return (

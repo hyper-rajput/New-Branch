@@ -25,7 +25,8 @@ const handleLogin = async () => {
   if (emailOrPhone && password) {
     setLoading(true); // Show loader
     try {
-      const result = await loginUser(emailOrPhone, password);
+      const account_type = isFamilyMember ? 'family':'child';
+      const result = await loginUser(emailOrPhone, password, account_type);
 
       if (result.status === "success") {
         // Navigate without resetting loading state to avoid screen flash

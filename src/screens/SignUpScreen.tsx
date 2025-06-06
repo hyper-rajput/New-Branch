@@ -37,7 +37,8 @@ const SignUpScreen = ({ navigation }) => {
     }
 
     try {
-      await createUser(email, password);
+      const account_type = isFamilyMember ? 'family':'child';
+      await createUser(email, password, account_type);
       navigation.navigate('ProfileSetupScreen');
     } catch (err) {
       if (err instanceof Error) {

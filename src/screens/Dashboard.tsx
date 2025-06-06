@@ -1,18 +1,54 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, Alert, TouchableOpacity, FlatList, Dimensions } from "react-native";
+import React, { useEffect, useState, useCallback, useRef } from "react";
+import { View, Text, StyleSheet, Alert, TouchableOpacity, FlatList, Dimensions, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import Voice from "@react-native-voice/voice";
 import { ActivityIndicator } from "react-native";
+import Voice from "@react-native-community/voice";
+import Tts from 'react-native-tts';
+import EncryptedStorage from 'react-native-encrypted-storage';
+import {initializeNotifications} from '../services/NotificationService';
+
 
 const Dashboard = ({ navigation }) => {
   const [lastFeedbackTime, setLastFeedbackTime] = useState(null);
   const [proactivePrompt, setProactivePrompt] = useState(null);
   const [isListening, setIsListening] = useState(false);
   const [recognizedText, setRecognizedText] = useState("");
+  const [isProcessingVoice, setIsProcessingVoice] = useState(false);
 
-  const storeFeedback = async (response: any) => {
+  const VOICE_ASSISTANT_API_URL = "http://lumia-env.eba-smvczc8e.us-east-1.elasticbeanstalk.com/chat"; // EXAMPLE URL
+  
+  useEffect(() => {
+    // Initialize notifications and get the cleanup function
+    const unsubscribeNotifications = initializeNotifications();
+
+    // Clean up listeners when the component unmounts
+    return () => {
+      unsubscribeNotifications();
+    };
+  }, []); // Empty dependency array ensures this effect runs only once on mount
+
+  // Initialize TTS
+  useEffect(() => {
+    if (Platform.OS === 'ios' || Platform.OS === 'android') {
+      Tts.setDefaultLanguage('en-US');
+      Tts.setDefaultRate(0.5);
+
+      Tts.addEventListener('tts-start', (event) => console.log('TTS Start', event));
+      Tts.addEventListener('tts-finish', (event) => console.log('TTS Finish', event));
+      Tts.addEventListener('tts-cancel', (event) => console.log('TTS Cancel', event));
+    }
+
+    return () => {
+      if (Platform.OS === 'ios' || Platform.OS === 'android') {
+        Tts.stop();
+      }
+    };
+  }, []);
+
+  // Function to store the user's response and timestamp
+  const storeFeedback = async (response) => {
     try {
       const timestamp = new Date().toLocaleString();
       await AsyncStorage.setItem("latestInteraction", response);
@@ -23,69 +59,203 @@ const Dashboard = ({ navigation }) => {
     }
   };
 
-  useEffect(() => {
-    Voice.onSpeechResults = onSpeechResultsHandler;
-    Voice.onSpeechError = onSpeechErrorHandler;
-
-    return () => {
-      Voice.destroy().then(Voice.removeAllListeners);
-    };
+  // Voice Assistant Callbacks using useCallback for stability
+  const onSpeechStart = useCallback((e) => {
+    console.log("onSpeechStart: ", e);
+    setIsListening(true);
+    setRecognizedText("");
+    setIsProcessingVoice(false);
   }, []);
 
-  const onSpeechResultsHandler = (e: any) => {
-    const text = e.value[0];
-    setRecognizedText(text);
-    Alert.alert(text);
+  const onSpeechEnd = useCallback((e) => {
+    console.log("onSpeechEnd: ", e);
     setIsListening(false);
-  };
+    // Voice.destroy() is usually called AFTER processing the speech result
+    // or when the component unmounts. Not typically right after onSpeechEnd,
+    // as you might still need to retrieve results.
+  }, []);
 
-  const onSpeechErrorHandler = (e: any) => {
-    console.error("Speech recognition error: ", e);
-    Alert.alert("Error", "Could not recognize speech. Try again.");
+  const onSpeechResults = useCallback((e) => {
+    console.log("onSpeechResults: ", e);
+    if (e.value && e.value.length > 0) {
+      const text = e.value[0];
+      setRecognizedText(text);
+      sendVoiceCommandToBackend(text);
+    } else {
+      Alert.alert("No speech recognized", "Please try speaking more clearly.");
+      Tts.speak("I didn't catch that. Could you please repeat?");
+      // If no speech recognized, we can destroy to reset the engine for the next attempt
+      Voice.destroy().catch(err => console.error("Error destroying Voice after no speech results:", err));
+    }
+  }, []);
+
+  const onSpeechError = useCallback((e) => {
+    console.log("onSpeechError: ", e);
     setIsListening(false);
-  };
+    setIsProcessingVoice(false);
+
+    // Crucially, destroy the Voice instance on error to reset its state
+    // This is the most likely place where the "every second time" error is resolved.
+    Voice.destroy();
+    Tts.speak("I'm sorry, Could not understand your speech. Please try speaking again.");
+  }, []);
+
+  // Voice Assistant Hooks and Functions
+  useEffect(() => {
+    if (Platform.OS === 'ios' || Platform.OS === 'android') {
+      Voice.onSpeechStart = onSpeechStart;
+      Voice.onSpeechEnd = onSpeechEnd;
+      Voice.onSpeechResults = onSpeechResults;
+      Voice.onSpeechError = onSpeechError;
+    }
+
+    return () => {
+      if (Platform.OS === 'ios' || Platform.OS === 'android') {
+        // Correct way to remove all listeners and destroy Voice
+        Voice.destroy().catch(err => console.error("Error destroying Voice on unmount:", err));
+        // Voice.removeAllListeners() is typically called after destroy.
+        // It's also safe to call it directly.
+        Voice.removeAllListeners();
+      }
+    };
+  }, [onSpeechStart, onSpeechEnd, onSpeechResults, onSpeechError]); // Depend on memoized callbacks
 
   const startListening = async () => {
-    try {
-      setIsListening(true);
-      setRecognizedText("");
-      await Voice.start("en-US");
-    } catch (error) {
-      console.error("Voice start error: ", error);
-      setIsListening(false);
+    if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
+      Alert.alert("Unsupported", "Voice recognition is only supported on iOS and Android devices.");
+      return;
     }
+    if(!isListening){
+      try {
+        // Always destroy before starting to ensure a clean slate.
+        // This is the key to preventing the "every second time" error.
+        await Voice.destroy().catch(err => console.error("Error destroying Voice before new session:", err));
+        Voice.removeAllListeners(); // Ensure all old listeners are truly gone
+
+        // Re-add listeners just before starting, to ensure they are fresh
+        Voice.onSpeechStart = onSpeechStart;
+        Voice.onSpeechEnd = onSpeechEnd;
+        Voice.onSpeechResults = onSpeechResults;
+        Voice.onSpeechError = onSpeechError;
+
+        Tts.stop();
+        setRecognizedText("");
+        setIsProcessingVoice(false);
+
+        await Voice.start("en-US");
+        console.log("Started listening...");
+      } catch (error) {
+        console.error("Error starting speech recognition: ", error);
+        setIsListening(false);
+        setIsProcessingVoice(false);
+        Alert.alert("Error", "Failed to start speech recognition. Please check microphone permissions.");
+        Tts.speak("I couldn't start listening. Please check your microphone permissions.");
+      }
+    }
+    };
+
+    const stopListening = async () => {
+      if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
+      try {
+        await Voice.stop();
+        setIsListening(false);
+        console.log("Stopped listening.");
+      } catch (error) {
+        console.error("Error stopping speech recognition: ", error);
+      }
   };
 
-  const sendToBackend = async (text: string) => {
+  // Function to send voice command to backend and handle response
+  const sendVoiceCommandToBackend = async (command) => {
+    setIsProcessingVoice(true);
+
+    const tokens = await EncryptedStorage.getItem("authTokens");
+    let idToken = null;
+    if (tokens) {
+      try {
+        const parsedTokens = JSON.parse(tokens);
+        idToken = parsedTokens.idToken;
+      } catch (e) {
+        console.error("Failed to parse authTokens from EncryptedStorage", e);
+      }
+    }
+
     try {
-      const response = await fetch("https://your-api-endpoint.com/voice-input", {
-        method: "POST",
+      const response = await fetch(VOICE_ASSISTANT_API_URL, {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ query: text }),
+        body: JSON.stringify({
+          message: command,
+          idToken:idToken
+        }),
       });
+
+      if (!response.ok) {
+        let errorDetail = `HTTP error! status: ${response.status}`;
+        try {
+          const errorJson = await response.json();
+          if (errorJson && errorJson.detail) {
+            errorDetail += ` - Detail: ${errorJson.detail}`;
+          }
+        } catch (jsonError) {
+          console.warn("Could not parse error JSON:", jsonError);
+        }
+        throw new Error(errorDetail);
+      }
 
       const data = await response.json();
       console.log("Backend response:", data);
-      Alert.alert("Response", data.reply || "Got it!");
+
+      const responseText = data.response || "I didn't get a clear response from the server.";
+
+      if (Platform.OS === 'ios' || Platform.OS === 'android') {
+        Tts.speak(responseText);
+      }
+
     } catch (error) {
-      console.error("Error sending to backend:", error);
-      Alert.alert("Error", "Failed to send to backend");
+      console.error("Error sending voice command to backend:", error);
+      Alert.alert("Communication Error", `Could not connect to the voice assistant service: ${error.message}`);
+      Tts.speak("I'm sorry, I'm having trouble connecting to my service. Please try again later.");
+    } finally {
+      setIsProcessingVoice(false);
+      // Destroy Voice after backend processing is complete to reset for the next user interaction
+      Voice.destroy().catch(err => console.error("Error destroying Voice after backend call:", err));
+      Voice.removeAllListeners(); // Clean up listeners after destroy
     }
   };
 
+  // Feedback check every 4 hours
   useEffect(() => {
     const checkFeedback = () => {
       const now = new Date();
-      if (lastFeedbackTime && now - lastFeedbackTime >= 4 * 60 * 60 * 1000) {
+      if (lastFeedbackTime && now.getTime() - lastFeedbackTime.getTime() >= 4 * 60 * 60 * 1000) {
         Alert.alert(
           "How Are You?",
           "Hello! How are you feeling right now?",
           [
-            { text: "Good", onPress: () => storeFeedback("I’m feeling good") },
-            { text: "Okay", onPress: () => storeFeedback("I’m feeling okay") },
-            { text: "Not Great", onPress: () => storeFeedback("I’m not feeling great") },
+            {
+              text: "Good",
+              onPress: () => {
+                console.log("Good");
+                storeFeedback("I’m feeling good");
+              },
+            },
+            {
+              text: "Okay",
+              onPress: () => {
+                console.log("Okay");
+                storeFeedback("I’m feeling okay");
+              },
+            },
+            {
+              text: "Not Great",
+              onPress: () => {
+                console.log("Not Great");
+                storeFeedback("I’m not feeling great");
+              },
+            },
           ]
         );
         setLastFeedbackTime(now);
@@ -100,6 +270,7 @@ const Dashboard = ({ navigation }) => {
     return () => clearInterval(interval);
   }, [lastFeedbackTime]);
 
+  // Proactive prompts every 30 seconds (for demo purposes)
   useEffect(() => {
     const prompts = [
       { message: "Good morning! The weather today is sunny, 72°F. Would you like to go for a walk?", action: "suggestWalk" },
@@ -111,32 +282,64 @@ const Dashboard = ({ navigation }) => {
     const interval = setInterval(() => {
       const randomPrompt = prompts[Math.floor(Math.random() * prompts.length)];
       setProactivePrompt(randomPrompt);
-    }, 30000);
+    }, 30000); // 30 seconds for demo; adjust as needed
 
     return () => clearInterval(interval);
   }, []);
 
+  // Handle prompt responses
   const handlePromptResponse = (action, response) => {
     if (action === "suggestWalk") {
-      response === "yes"
-        ? Alert.alert("Great!", "Let’s plan a short walk. I’ll remind you in 10 minutes.")
-        : Alert.alert("Okay", "Maybe later!");
+      if (response === "yes") {
+        Alert.alert("Great!", "Let’s plan a short walk. I’ll remind you in 10 minutes.");
+      } else {
+        Alert.alert("Okay", "Maybe later! Let me know if you change your mind.");
+      }
     } else if (action === "suggestMusic") {
-      response === "yes" ? navigation.navigate("Music") : Alert.alert("Okay", "Let me know later!");
+      if (response === "yes") {
+        navigation.navigate("Music");
+      } else {
+        Alert.alert("Okay", "Let me know if you’d like to listen to music later!");
+      }
     } else if (action === "suggestContact") {
-      response === "yes" ? navigation.navigate("Call") : Alert.alert("Okay", "I’ll check back later!");
+      if (response === "yes") {
+        navigation.navigate("Call");
+      } else {
+        Alert.alert("Okay", "I’ll check back later!");
+      }
     } else if (action === "suggestMessages") {
-      response === "yes" ? navigation.navigate("Messages") : Alert.alert("Okay", "Check your messages later!");
+      if (response === "yes") {
+        navigation.navigate("Messages");
+      } else {
+        Alert.alert("Okay", "You can check your messages later!");
+      }
     }
     setProactivePrompt(null);
   };
 
+  // Sample reminder data
   const reminders = [
-    { id: "1", title: "Take your medicine", subtitle: "9:00 A.M. Blood Pressure", icon: "local-pharmacy" },
-    { id: "2", title: "Morning walk", subtitle: "10:00 AM - 15 minutes", icon: "directions-walk" },
-    { id: "3", title: "TG5", subtitle: "11:00 AM - 60 minutes", icon: "tv" },
+    {
+      id: "1",
+      title: "Take your medicine",
+      subtitle: "9:00 A.M. Blood Pressure",
+      icon: "local-pharmacy",
+    },
+    {
+      id: "2",
+      title: "Morning walk",
+      subtitle: "10:00 AM - 15 minutes",
+      icon: "directions-walk",
+    },
+    {
+      id: "3",
+      title: "TG5",
+      subtitle: "11:00 AM - 60 minutes",
+      icon: "tv",
+    },
   ];
 
+  // Render each reminder item
   const renderReminder = ({ item }) => (
     <TouchableOpacity style={styles.reminderItem}>
       <Icon name={item.icon} size={30} color="#00351D" style={styles.reminderIcon} />
@@ -150,29 +353,33 @@ const Dashboard = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       {/* Header Section */}
-    <View style={styles.header}>
-  <TouchableOpacity onPress={() => navigation.navigate("ProfileScreen")}>
-    <Icon name="account-circle" size={35} color="#333" />
-  </TouchableOpacity>
-
-  <View style={{ width: 35 }} /> {/* Empty space for alignment (no center icon now) */}
-
-  <TouchableOpacity
-    style={styles.headerButton}
-    onPress={() => navigation.navigate("Notifications")}
-  >
-    <View style={styles.notificationIcon}>
-      <Icon name="notifications" size={24} color="#333" />
-      <View style={styles.notificationBadge}>
-        <Text style={styles.notificationBadgeText}>1</Text>
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.headerButton}
+          onPress={() => navigation.navigate("Menu")}
+        >
+          <Icon name="menu" size={35} color="#333" />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => navigation.navigate("ProfileScreen")}>
+          <Icon name="account-circle" size={35} color="#333" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.headerButton}
+          onPress={() => navigation.navigate("Notifications")}
+        >
+          <View style={styles.notificationIcon}>
+            <Icon name="notifications" size={24} color="#333" />
+            <View style={styles.notificationBadge}>
+              <Text style={styles.notificationBadgeText}>1</Text>
+            </View>
+          </View>
+        </TouchableOpacity>
       </View>
-    </View>
-  </TouchableOpacity>
-</View>
 
-
+      {/* Placeholder for the blurred card number */}
       <Text style={styles.cardNumber}>xxxxxxxxxxxxxxxxxxxx</Text>
 
+      {/* Proactive Prompt */}
       {proactivePrompt && (
         <View style={styles.promptContainer}>
           <Text style={styles.promptText}>{proactivePrompt.message}</Text>
@@ -193,33 +400,41 @@ const Dashboard = ({ navigation }) => {
         </View>
       )}
 
-      {/* Microphone Section */}
+      {/* Display recognized text */}
+      {recognizedText ? (
+        <View style={styles.recognizedTextContainer}>
+          <Text style={styles.recognizedText}>You said: "{recognizedText}"</Text>
+        </View>
+      ) : null}
+
+      {/* Microphone and Surrounding Icons Section */}
       <View style={styles.iconContainer}>
+        {/* Microphone Button */}
         <TouchableOpacity
-          style={styles.microphoneButton}
+          style={[styles.microphoneButton, isListening ? { borderColor: "red" } : {}]}
           onPress={startListening}
-          disabled={isListening}
+          disabled={isProcessingVoice || (Platform.OS !== 'ios' && Platform.OS !== 'android')}
         >
-          {isListening ? (
+          {isProcessingVoice ? (
             <ActivityIndicator size="large" color="#000" />
           ) : (
-            <Icon name="mic" size={50} color="#000" />
+            <Icon name="mic" size={50} color={isListening ? 'red' : "#000"} />
           )}
         </TouchableOpacity>
 
-        {/* Family, Health, and Message Buttons */}
+        {/* Row of Buttons (Music, Call, Message) */}
         <View style={styles.buttonRow}>
           <TouchableOpacity
-            style={[styles.smallButton, styles.familyButton]}
-            onPress={() => navigation.navigate("FamilyMemberScreen")}
+            style={[styles.smallButton, styles.musicButton]}
+            onPress={() => navigation.navigate("Music")}
           >
-            <Icon name="group" size={45} color="#000" />
+            <Icon name="headset" size={45} color="#000" />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.smallButton, styles.healthButton]}
-            onPress={() => navigation.navigate("HealthTrackingScreen")}
+            style={[styles.smallButton, styles.callButton]}
+            onPress={() => navigation.navigate("Call")}
           >
-            <Icon name="health-and-safety" size={45} color="#000" />
+            <Icon name="call" size={45} color="#000" />
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.smallButton, styles.messageButton]}
@@ -230,6 +445,7 @@ const Dashboard = ({ navigation }) => {
         </View>
       </View>
 
+      {/* Reminder List */}
       <FlatList
         data={reminders}
         renderItem={renderReminder}
@@ -363,6 +579,7 @@ const styles = StyleSheet.create({
   },
   smallButton: {
     backgroundColor: "#FFF",
+    width: 80,
     height: 80,
     borderRadius: 40,
     alignItems: "center",
@@ -376,6 +593,9 @@ const styles = StyleSheet.create({
     borderColor: "#E6F0FA",
     width: width * 0.333 - 20,
   },
+  musicButton: {},
+  callButton: {},
+  messageButton: {},
   reminderList: {
     flex: 1,
   },
@@ -404,6 +624,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#666",
     marginTop: 5,
+  },
+  recognizedTextContainer: {
+    backgroundColor: "#e0ffe0",
+    padding: 10,
+    borderRadius: 5,
+    marginBottom: 15,
+    alignItems: 'center',
+  },
+  recognizedText: {
+    fontSize: 16,
+    color: "#006400",
+    fontStyle: 'italic',
   },
 });
 

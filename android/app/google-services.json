@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "591478914450",
+    "project_id": "lumia-87c22",
+    "storage_bucket": "lumia-87c22.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:591478914450:android:8ef7c45e0225570011554b",
+        "android_client_info": {
+          "package_name": "com.voice2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAKSTPFruaRm5CYk3NSjIXvNnRe6QHCVQI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

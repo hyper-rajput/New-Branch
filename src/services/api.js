@@ -1,7 +1,8 @@
 import axios from "axios";
 import EncryptedStorage from 'react-native-encrypted-storage';
 
-const BASE_URL = "http://lumia-env.eba-smvczc8e.us-east-1.elasticbeanstalk.com/";
+
+const BASE_URL = "http://192.168.29.121:8000/";
 const FIREBASE_API_KEY = "AIzaSyD8gecJk3z5GYZGdjyEmDL5fnpN_hYuPdg"; // Replace with your key
 
 const api = axios.create({
@@ -21,15 +22,15 @@ const saveAuthTokens = async ({ idToken, refreshToken, expiresIn }) => {
 };
 
 // Create new user
-export const createUser = async (email, password) => {
-  const response = await api.post("/create-user", { email, password });
-  await saveAuthTokens(response);
+export const createUser = async (email, password, account_type) => {
+  const response = await api.post("/create-user", { email, password, account_type });
+  await saveAuthTokens(response.data.user);
   return response.data;
 };
 
 // Login user
-export const loginUser = async (email, password) => {
-  const response = await api.post("/login", { email, password });
+export const loginUser = async (email, password,account_type) => {
+  const response = await api.post("/login", { email, password, account_type });
   await saveAuthTokens(response.data);
   return response.data;
 };
@@ -90,6 +91,16 @@ export const saveUserDetails = async (profileData) => {
   if (!tokens) throw new Error("Missing token. Please log in.");
 
   const { idToken } = JSON.parse(tokens);
-  const response = await api.post("/user-details", { ...profileData, idToken });
+
+  // Remove undefined/null fields
+  const cleanedProfileData = Object.fromEntries(
+    Object.entries(profileData).filter(([_, value]) => value != null)
+  );
+
+  const response = await api.post("/user-details", {
+    idToken,
+    ...cleanedProfileData
+  });
+
   return response.data;
 };
