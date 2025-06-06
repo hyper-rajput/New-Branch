@@ -7,6 +7,7 @@ import DashboardScreen from '../screens/Dashboard'; // ✅ Make sure this exists
 import HealthTrackingScreen from '../screens/HealthTrackingScreen';
 import FamilyMemberScreen from '../screens/FamilyMemberScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import MedicationReminder from '../screens/MedicationReminder';
 const Stack = createNativeStackNavigator();
 
 const AuthNavigator = () => {
@@ -19,6 +20,7 @@ const AuthNavigator = () => {
       <Stack.Screen name="HealthTrackingScreen" component={HealthTrackingScreen} />
        <Stack.Screen name="FamilyMemberScreen" component={FamilyMemberScreen} />
        <Stack.Screen name="ProfileScreen" component={ProfileScreen} />
+       <Stack.Screen name="MedicationReminder" component={MedicationReminder} />
     </Stack.Navigator>
   );
 };
