@@ -47,8 +47,7 @@ const Dashboard = ({ navigation }) => {
     };
   }, []);
 
-  // Function to store the user's response and timestamp
-  const storeFeedback = async (response) => {
+  const storeFeedback = async (response: any) => {
     try {
       const timestamp = new Date().toLocaleString();
       await AsyncStorage.setItem("latestInteraction", response);
@@ -59,7 +58,6 @@ const Dashboard = ({ navigation }) => {
     }
   };
 
-  // Voice Assistant Callbacks using useCallback for stability
   const onSpeechStart = useCallback((e) => {
     console.log("onSpeechStart: ", e);
     setIsListening(true);
@@ -226,36 +224,17 @@ const Dashboard = ({ navigation }) => {
     }
   };
 
-  // Feedback check every 4 hours
   useEffect(() => {
     const checkFeedback = () => {
       const now = new Date();
-      if (lastFeedbackTime && now.getTime() - lastFeedbackTime.getTime() >= 4 * 60 * 60 * 1000) {
+      if (lastFeedbackTime && now.getTime() - lastFeedbackTime >= 4 * 60 * 60 * 1000) {
         Alert.alert(
           "How Are You?",
           "Hello! How are you feeling right now?",
           [
-            {
-              text: "Good",
-              onPress: () => {
-                console.log("Good");
-                storeFeedback("I’m feeling good");
-              },
-            },
-            {
-              text: "Okay",
-              onPress: () => {
-                console.log("Okay");
-                storeFeedback("I’m feeling okay");
-              },
-            },
-            {
-              text: "Not Great",
-              onPress: () => {
-                console.log("Not Great");
-                storeFeedback("I’m not feeling great");
-              },
-            },
+            { text: "Good", onPress: () => storeFeedback("I’m feeling good") },
+            { text: "Okay", onPress: () => storeFeedback("I’m feeling okay") },
+            { text: "Not Great", onPress: () => storeFeedback("I’m not feeling great") },
           ]
         );
         setLastFeedbackTime(now);
@@ -270,7 +249,6 @@ const Dashboard = ({ navigation }) => {
     return () => clearInterval(interval);
   }, [lastFeedbackTime]);
 
-  // Proactive prompts every 30 seconds (for demo purposes)
   useEffect(() => {
     const prompts = [
       { message: "Good morning! The weather today is sunny, 72°F. Would you like to go for a walk?", action: "suggestWalk" },
@@ -282,64 +260,32 @@ const Dashboard = ({ navigation }) => {
     const interval = setInterval(() => {
       const randomPrompt = prompts[Math.floor(Math.random() * prompts.length)];
       setProactivePrompt(randomPrompt);
-    }, 30000); // 30 seconds for demo; adjust as needed
+    }, 30000);
 
     return () => clearInterval(interval);
   }, []);
 
-  // Handle prompt responses
   const handlePromptResponse = (action, response) => {
     if (action === "suggestWalk") {
-      if (response === "yes") {
-        Alert.alert("Great!", "Let’s plan a short walk. I’ll remind you in 10 minutes.");
-      } else {
-        Alert.alert("Okay", "Maybe later! Let me know if you change your mind.");
-      }
+      response === "yes"
+        ? Alert.alert("Great!", "Let’s plan a short walk. I’ll remind you in 10 minutes.")
+        : Alert.alert("Okay", "Maybe later!");
     } else if (action === "suggestMusic") {
-      if (response === "yes") {
-        navigation.navigate("Music");
-      } else {
-        Alert.alert("Okay", "Let me know if you’d like to listen to music later!");
-      }
+      response === "yes" ? navigation.navigate("Music") : Alert.alert("Okay", "Let me know later!");
     } else if (action === "suggestContact") {
-      if (response === "yes") {
-        navigation.navigate("Call");
-      } else {
-        Alert.alert("Okay", "I’ll check back later!");
-      }
+      response === "yes" ? navigation.navigate("Call") : Alert.alert("Okay", "I’ll check back later!");
     } else if (action === "suggestMessages") {
-      if (response === "yes") {
-        navigation.navigate("Messages");
-      } else {
-        Alert.alert("Okay", "You can check your messages later!");
-      }
+      response === "yes" ? navigation.navigate("Messages") : Alert.alert("Okay", "Check your messages later!");
     }
     setProactivePrompt(null);
   };
 
-  // Sample reminder data
   const reminders = [
-    {
-      id: "1",
-      title: "Take your medicine",
-      subtitle: "9:00 A.M. Blood Pressure",
-      icon: "local-pharmacy",
-    },
-    {
-      id: "2",
-      title: "Morning walk",
-      subtitle: "10:00 AM - 15 minutes",
-      icon: "directions-walk",
-    },
-    {
-      id: "3",
-      title: "TG5",
-      subtitle: "11:00 AM - 60 minutes",
-      icon: "tv",
-    },
+    { id: "1", title: "Take your medicine", subtitle: "9:00 A.M. Blood Pressure", icon: "local-pharmacy" },
+    { id: "2", title: "Morning walk", subtitle: "10:00 AM - 15 minutes", icon: "directions-walk" },
+    { id: "3", title: "TG5", subtitle: "11:00 AM - 60 minutes", icon: "tv" },
   ];
 
-  // Render each reminder item
   const renderReminder = ({ item }) => (
     <TouchableOpacity style={styles.reminderItem}>
       <Icon name={item.icon} size={30} color="#00351D" style={styles.reminderIcon} />
@@ -353,33 +299,29 @@ const Dashboard = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       {/* Header Section */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={() => navigation.navigate("Menu")}
-        >
-          <Icon name="menu" size={35} color="#333" />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => navigation.navigate("ProfileScreen")}>
-          <Icon name="account-circle" size={35} color="#333" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={() => navigation.navigate("Notifications")}
-        >
-          <View style={styles.notificationIcon}>
-            <Icon name="notifications" size={24} color="#333" />
-            <View style={styles.notificationBadge}>
-              <Text style={styles.notificationBadgeText}>1</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </View>
+    <View style={styles.header}>
+  <TouchableOpacity onPress={() => navigation.navigate("ProfileScreen")}>
+    <Icon name="account-circle" size={35} color="#333" />
+  </TouchableOpacity>
 
-      {/* Placeholder for the blurred card number */}
+  <View style={{ width: 35 }} /> 
+
+  <TouchableOpacity
+    style={styles.headerButton}
+    onPress={() => navigation.navigate("Notifications")}
+  >
+    <View style={styles.notificationIcon}>
+      <Icon name="notifications" size={24} color="#333" />
+      <View style={styles.notificationBadge}>
+        <Text style={styles.notificationBadgeText}>1</Text>
+      </View>
+    </View>
+  </TouchableOpacity>
+</View>
+
+
       <Text style={styles.cardNumber}>xxxxxxxxxxxxxxxxxxxx</Text>
 
-      {/* Proactive Prompt */}
       {proactivePrompt && (
         <View style={styles.promptContainer}>
           <Text style={styles.promptText}>{proactivePrompt.message}</Text>
@@ -399,9 +341,7 @@ const Dashboard = ({ navigation }) => {
           </View>
         </View>
       )}
-
-      {/* Display recognized text */}
-      {recognizedText ? (
+{recognizedText ? (
         <View style={styles.recognizedTextContainer}>
           <Text style={styles.recognizedText}>You said: "{recognizedText}"</Text>
         </View>
@@ -422,19 +362,18 @@ const Dashboard = ({ navigation }) => {
           )}
         </TouchableOpacity>
 
-        {/* Row of Buttons (Music, Call, Message) */}
         <View style={styles.buttonRow}>
           <TouchableOpacity
-            style={[styles.smallButton, styles.musicButton]}
-            onPress={() => navigation.navigate("Music")}
+            style={[styles.smallButton, styles.familyButton]}
+            onPress={() => navigation.navigate("FamilyMemberScreen")}
           >
-            <Icon name="headset" size={45} color="#000" />
+            <Icon name="group" size={45} color="#000" />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.smallButton, styles.callButton]}
-            onPress={() => navigation.navigate("Call")}
+            style={[styles.smallButton, styles.healthButton]}
+            onPress={() => navigation.navigate("HealthTrackingScreen")}
           >
-            <Icon name="call" size={45} color="#000" />
+            <Icon name="health-and-safety" size={45} color="#000" />
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.smallButton, styles.messageButton]}
@@ -445,7 +384,6 @@ const Dashboard = ({ navigation }) => {
         </View>
       </View>
 
-      {/* Reminder List */}
       <FlatList
         data={reminders}
         renderItem={renderReminder}
@@ -579,7 +517,6 @@ const styles = StyleSheet.create({
   },
   smallButton: {
     backgroundColor: "#FFF",
-    width: 80,
     height: 80,
     borderRadius: 40,
     alignItems: "center",
@@ -593,9 +530,6 @@ const styles = StyleSheet.create({
     borderColor: "#E6F0FA",
     width: width * 0.333 - 20,
   },
-  musicButton: {},
-  callButton: {},
-  messageButton: {},
   reminderList: {
     flex: 1,
   },
@@ -625,7 +559,7 @@ const styles = StyleSheet.create({
     color: "#666",
     marginTop: 5,
   },
-  recognizedTextContainer: {
+    recognizedTextContainer: {
     backgroundColor: "#e0ffe0",
     padding: 10,
     borderRadius: 5,

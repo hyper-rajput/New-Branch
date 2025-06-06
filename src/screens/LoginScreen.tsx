@@ -30,10 +30,7 @@ const handleLogin = async () => {
 
       if (result.status === "success") {
         // Navigate without resetting loading state to avoid screen flash
-        navigation.reset({
-          index: 0,
-          routes: [{ name: "Dashboard" }],
-        });
+        navigation.replace("Dashboard");
       } else {
         setLoading(false);
         Alert.alert("Error", result.message || "Unknown error");

@@ -21,14 +21,11 @@ const ProfileScreen = ({ navigation }) => {
   useEffect(() => {
     const fetchUserData = async () => {
       try {
-        const name = await AsyncStorage.getItem("user_name");
-        const email = await AsyncStorage.getItem("user_email");
-        const emergencyContact = await AsyncStorage.getItem("emergency_contact");
-
+        const userDetailsString = await AsyncStorage.getItem("userDetails");
         setUserData({
-          name: name || "Name not set",
-          email: email || "Email not set",
-          emergencyContact: emergencyContact || "Emergency contact not set",
+          name: userDetailsString.user_name || "Name not set",
+          email: userDetailsString.user_email || "Email not set",
+          emergencyContact: userDetailsString.emergency_contact || "Emergency contact not set",
         });
       } catch (error) {
         console.error("Error loading user data:", error);
@@ -41,14 +38,10 @@ const ProfileScreen = ({ navigation }) => {
   const handleLogout = async () => {
     try {
       await logout
-              navigation.reset({
-          index: 0,
-          routes: [{ name: "LoginScreen" }],
-        });
     } catch (error) {
       Alert.alert("Error", "Failed to logout. Try again.");
     }
-    navigation.navigate("LoginScreen");
+    navigation.replace("LoginScreen");
   };
 
   return (

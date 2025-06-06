@@ -1,8 +1,9 @@
 import axios from "axios";
 import EncryptedStorage from 'react-native-encrypted-storage';
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 
-const BASE_URL = "http://192.168.29.121:8000/";
+const BASE_URL = "http://lumia-env.eba-smvczc8e.us-east-1.elasticbeanstalk.com";
 const FIREBASE_API_KEY = "AIzaSyD8gecJk3z5GYZGdjyEmDL5fnpN_hYuPdg"; // Replace with your key
 
 const api = axios.create({
@@ -103,4 +104,34 @@ export const saveUserDetails = async (profileData) => {
   });
 
   return response.data;
+};
+
+export const fetchAndStoreUserDetails = async () => {
+  try {
+    // Retrieve the stored token (assumes you already saved it somewhere like on login)
+  const tokens = await EncryptedStorage.getItem("authTokens");
+  if (!tokens) throw new Error("Missing token. Please log in.");
+
+        const parsedTokens = JSON.parse(tokens);
+        idToken = parsedTokens.idToken;
+
+  const response = await api.post("/user-detail", {
+    idToken
+  });
+
+    if (response.data.status === 'success') {
+      const userDetails = response.data.data;
+
+      // Save each field to AsyncStorage (or save as a single object)
+      await AsyncStorage.setItem('userDetails', JSON.stringify(userDetails));
+
+      console.log('User details saved:', userDetails);
+      return userDetails;
+    } else {
+      throw new Error('Failed to fetch user details');
+    }
+  } catch (error) {
+    console.error('Error fetching user details:', error.message);
+    throw error;
+  }
 };
