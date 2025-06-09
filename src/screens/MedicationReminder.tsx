@@ -11,12 +11,12 @@ import {
   Platform,
   Keyboard,
   ScrollView,
-  SafeAreaView,
+  SafeAreaView, // Corrected import
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import Slider from "@react-native-community/slider";
-import notifee, { AndroidImportance, TimestampTrigger, TriggerType } from '@notifee/react-native';
+import notifee, { AndroidImportance, TimestampTrigger, TriggerType, AuthorizationStatus } from '@notifee/react-native';
 import Sound from 'react-native-sound';
 import { useNavigation, useRoute } from '@react-navigation/native';
 
@@ -46,7 +46,7 @@ const SafeAreaComponent = Platform.OS === "ios" ? SafeAreaView : View;
 const MedicationReminder: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute();
-  const { newMedicineFromHealth, medicines: initialMedicines } = route.params || {};
+  const { newMedicineFromHealth } = route.params || {};
 
   const [medicineName, setMedicineName] = useState<string>("");
   const [dosage, setDosage] = useState<string>("");
@@ -69,7 +69,7 @@ const MedicationReminder: React.FC = () => {
   const [showRefillDaysPicker, setShowRefillDaysPicker] = useState<boolean>(false);
   const [refillReminderText, setRefillReminderText] = useState<string>("");
   const [startFromToday, setStartFromToday] = useState<boolean>(false);
-  const [medicines, setMedicines] = useState<Medicine[]>(initialMedicines || []);
+  const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [sound, setSound] = useState<Sound | null>(null);
 
   // Pre-populate form fields with data from HealthTrackingScreen
@@ -90,18 +90,25 @@ const MedicationReminder: React.FC = () => {
     const setupNotifications = async () => {
       // Initialize notification channel for Android
       if (Platform.OS === "android") {
-        await notifee.createChannel({
-          id: "default",
-          name: "Default Channel",
-          importance: AndroidImportance.HIGH,
-          vibration: true,
-          lightColor: "#FF231F7C",
-          sound: "default",
-        });
+        try {
+          await notifee.createChannel({
+            id: "default",
+            name: "Default Channel",
+            importance: AndroidImportance.HIGH,
+            vibration: true,
+            lightColor: "#FF231F7C",
+            sound: "default",
+          });
+        } catch (error) {
+          console.error("Failed to create notification channel:", error);
+          Alert.alert("Error", "Failed to set up notifications. Please try again.");
+          return;
+        }
       }
 
       // Request notification permissions
-      await registerForPushNotifications();
+      const granted = await registerForPushNotifications();
+      if (!granted) return;
 
       // Listen for foreground notification events
       const subscription = notifee.onForegroundEvent(async ({ type, detail }) => {
@@ -123,9 +130,11 @@ const MedicationReminder: React.FC = () => {
 
   const registerForPushNotifications = async () => {
     const permission = await notifee.requestPermission();
-    if (!permission) {
+    if (permission.authorizationStatus !== AuthorizationStatus.AUTHORIZED) {
       Alert.alert("Permission Required", "Please enable notifications for reminders.");
+      return false;
     }
+    return true;
   };
 
   const playSound = async () => {
@@ -153,12 +162,15 @@ const MedicationReminder: React.FC = () => {
     const now = new Date();
     const selectedHour = medicine.time.getHours();
     const selectedMinute = medicine.time.getMinutes();
-    let triggerDate = medicine.startFromToday
-      ? new Date(now.setHours(selectedHour, selectedMinute, 0, 0))
-      : new Date(now.getTime() + 10 * 1000);
+    const triggerDate = new Date();
+    triggerDate.setHours(selectedHour, selectedMinute, 0, 0);
+
+    if (!medicine.startFromToday && triggerDate <= now) {
+      triggerDate.setDate(triggerDate.getDate() + 1);
+    }
 
     if (triggerDate <= now) {
-      triggerDate.setDate(triggerDate.getDate() + 1); // Schedule for the next day if time has passed
+      triggerDate.setDate(triggerDate.getDate() + 1);
     }
 
     const trigger: TimestampTrigger = {
@@ -166,19 +178,24 @@ const MedicationReminder: React.FC = () => {
       timestamp: triggerDate.getTime(),
     };
 
-    await notifee.createTriggerNotification(
-      {
-        id: medicine.id,
-        title: "Medication Reminder",
-        body: `Time to take ${medicine.dosage} of ${medicine.name}`,
-        data: { medicineId: medicine.id },
-        android: {
-          channelId: "default",
-          pressAction: { id: "default" },
+    try {
+      await notifee.createTriggerNotification(
+        {
+          id: medicine.id,
+          title: "Medication Reminder",
+          body: `Time to take ${medicine.dosage} of ${medicine.name}`,
+          data: { medicineId: medicine.id },
+          android: {
+            channelId: "default",
+            pressAction: { id: "default" },
+          },
         },
-      },
-      trigger
-    );
+        trigger
+      );
+    } catch (error) {
+      console.error("Failed to schedule notification:", error);
+      Alert.alert("Error", "Failed to schedule the notification. Please try again.");
+    }
 
     if (medicine.refillReminder && medicine.refillDate) {
       const refillTriggerDate = new Date(medicine.refillDate);
@@ -190,20 +207,30 @@ const MedicationReminder: React.FC = () => {
           timestamp: refillTriggerDate.getTime(),
         };
 
-        await notifee.createTriggerNotification(
-          {
-            id: `refill-${medicine.id}`,
-            title: "Refill Reminder",
-            body: `Time to refill ${medicine.name}. Only ${medicine.refillDays} days left!`,
-            android: {
-              channelId: "default",
-              pressAction: { id: "default" },
+        try {
+          await notifee.createTriggerNotification(
+            {
+              id: `refill-${medicine.id}`,
+              title: "Refill Reminder",
+              body: `Time to refill ${medicine.name}. Only ${medicine.refillDays} days left!`,
+              android: {
+                channelId: "default",
+                pressAction: { id: "default" },
+              },
             },
-          },
-          refillTrigger
-        );
+            refillTrigger
+          );
+        } catch (error) {
+          console.error("Failed to schedule refill notification:", error);
+          Alert.alert("Error", "Failed to schedule the refill notification. Please try again.");
+        }
       }
     }
+  };
+
+  const clearAllNotifications = async () => {
+    await notifee.cancelAllNotifications();
+    Alert.alert("Success", "All notifications cleared.");
   };
 
   const addMedicine = () => {
@@ -232,7 +259,14 @@ const MedicationReminder: React.FC = () => {
 
     setMedicines((prev) => [...prev, newMedicine]);
 
-    if (enableTakeAlert || refillReminder) scheduleNotification(newMedicine);
+    if (enableTakeAlert || refillReminder) {
+      scheduleNotification(newMedicine);
+    } else {
+      Alert.alert(
+        "Reminder Not Scheduled",
+        "You haven't enabled the 'Take Medicine Alert' or 'Refill Reminder'. Enable at least one to receive notifications."
+      );
+    }
 
     const timeString = time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     Alert.alert("Success", `Medicine added with reminder at ${timeString}`);
@@ -291,11 +325,11 @@ const MedicationReminder: React.FC = () => {
   };
 
   const handleTimeChange = (event: any, selectedTime?: Date) => {
-    setShowTimePicker(Platform.OS === "ios"); // Keep picker open on iOS until "Done" is pressed
+    setShowTimePicker(Platform.OS === "ios");
     if (selectedTime) {
       setTempTime(selectedTime);
       if (Platform.OS === "android") {
-        setTime(selectedTime); // Auto-confirm on Android
+        setTime(selectedTime);
         setShowTimePicker(false);
       }
     }
@@ -632,6 +666,14 @@ const MedicationReminder: React.FC = () => {
               accessibilityLabel="Add new medicine"
             >
               <Text style={styles.addButtonText}>Add Medicine</Text>
+            </TouchableOpacity>
+            {/* Debug Button to Clear Notifications */}
+            <TouchableOpacity
+              style={[styles.addButton, { backgroundColor: '#FF5733', marginTop: 8 }]}
+              onPress={clearAllNotifications}
+              accessibilityLabel="Clear all notifications"
+            >
+              <Text style={styles.addButtonText}>Clear All Notifications</Text>
             </TouchableOpacity>
           </View>
 
