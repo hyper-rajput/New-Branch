@@ -92,14 +92,17 @@ const MedicationReminder: React.FC = () => {
       if (Platform.OS === "android") {
         try {
           await notifee.createChannel({
-            id: "default",
-            name: "Default Channel",
-            importance: AndroidImportance.HIGH,
-            vibration: true,
-            lightColor: "#FF231F7C",
-            sound: "default",
-          });
-        } catch (error) {
+      id: "alarm",
+      name: "Alarm Channel",
+      importance: AndroidImportance.HIGH,
+      sound: "alarm",
+      vibration: true,
+      bypassDnd: true,
+      // @ts-ignore
+      channelType: "alarm",
+    });
+  }
+  catch (error) {
           console.error("Failed to create notification channel:", error);
           Alert.alert("Error", "Failed to set up notifications. Please try again.");
           return;
@@ -185,10 +188,12 @@ const MedicationReminder: React.FC = () => {
           title: "Medication Reminder",
           body: `Time to take ${medicine.dosage} of ${medicine.name}`,
           data: { medicineId: medicine.id },
-          android: {
-            channelId: "default",
-            pressAction: { id: "default" },
-          },
+         android: {
+  channelId: "alarm",
+  pressAction: { id: "default" },
+  sound: "alarm",
+  fullScreenAction: { id: "default" },
+},
         },
         trigger
       );
