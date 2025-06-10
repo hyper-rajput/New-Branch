@@ -377,7 +377,7 @@ const Dashboard = ({ navigation }) => {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.smallButton, styles.messageButton]}
-            onPress={() => navigation.navigate("Messages")}
+            onPress={() => navigation.navigate("MessagesScreen")}
           >
             <Icon name="chat" size={45} color="#000" />
           </TouchableOpacity>
