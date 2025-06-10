@@ -302,7 +302,6 @@ export const saveUserDetails = async (profileData) => {
 };
 
 export const fetchAndStoreUserDetails = async () => {
-    console.log("Attempting to fetch and store user details...");
     let idToken;
     try {
       const tokens = await getAuthTokens();
@@ -602,5 +601,51 @@ export const deleteMedicineApi = async (medicineid) => {
     const errorMessage = error.response?.data?.message || error.message || "An unknown error occurred.";
     Alert.alert("Deletion Error", errorMessage);
     throw error; // Re-throw the error for further handling up the call stack
+  }
+};
+
+export const saveReminder = async (medicine) => {
+  try {
+    const tokens = await getAuthTokens();
+    const idToken = tokens?.idToken;
+
+    if (!idToken) {
+      Alert.alert("Authentication Error", "Could not retrieve user session. Please log in again.");
+      throw new Error("ID token not available.");
+    }
+    
+
+const payload = {
+      idToken,
+      reminder_id: medicine.id,
+      medicine_name: medicine.name,
+      pill_details: medicine.dosage,
+      time: medicine.time.toISOString(),
+      end_date: medicine.duration.toISOString(),
+      amount_per_box: medicine.amountPerBox.toString(),
+      current_quantity: medicine.currentQuantity.toString(),
+      take_medicine_alert: medicine.enableTakeAlert.toString(),
+      ring_phone: medicine.ringPhone.toString(),
+      send_message: medicine.sendMessage.toString(),
+      refill_reminder: medicine.refillReminder.toString(),
+      set_day_before_refill: medicine.refillDays.toString(),
+      set_refill_date: medicine.refillDate.toISOString(),
+      start_from_today: medicine.startFromToday.toString(),
+    };
+
+    const response = await api.post("/set-medicine-reminder", payload, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+    
+if (!response.status == 200) {
+  Alert.alert("Server Error", "Unexpected response status: " + response.status);
+  throw new Error("Unexpected server response");
+}
+    return response.data;
+  } catch (error) {
+    const errorData = error.response?.data || { message: error.message };
+    Alert.alert("API call error (saveReminder):", error);
   }
 };
