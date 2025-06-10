@@ -29,8 +29,8 @@ const LoginScreen = ({ navigation }) => {
         const result = await loginUser(emailOrPhone, password, account_type);
 
         if (result.status === "success") {
-          // Navigate to FamilyDashboard if isFamilyMember is true, otherwise to Dashboard
-          navigation.replace(isFamilyMember ? "FamilyDashboard" : "Dashboard");
+          // Navigate to FamilyMemberProfileSetup if isFamilyMember is true, otherwise to Dashboard
+          navigation.replace(isFamilyMember ? "FamilyMemberProfileSetup" : "Dashboard");
         } else {
           setLoading(false);
           Alert.alert("Error", result.message || "Unknown error");
