@@ -19,40 +19,38 @@ const LoginScreen = ({ navigation }) => {
   const [password, setPassword] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [isFamilyMember, setIsFamilyMember] = useState(false);
-  const [loading, setLoading] = useState(false); // <-- Loader state
+  const [loading, setLoading] = useState(false);
 
-const handleLogin = async () => {
-  if (emailOrPhone && password) {
-    setLoading(true); // Show loader
-    try {
-      const account_type = isFamilyMember ? 'family':'child';
-      const result = await loginUser(emailOrPhone, password, account_type);
+  const handleLogin = async () => {
+    if (emailOrPhone && password) {
+      setLoading(true);
+      try {
+        const account_type = isFamilyMember ? 'family' : 'child';
+        const result = await loginUser(emailOrPhone, password, account_type);
 
-      if (result.status === "success") {
-        // Navigate without resetting loading state to avoid screen flash
-        navigation.replace("Dashboard");
-      } else {
+        if (result.status === "success") {
+          // Navigate to FamilyDashboard if isFamilyMember is true, otherwise to Dashboard
+          navigation.replace(isFamilyMember ? "FamilyDashboard" : "Dashboard");
+        } else {
+          setLoading(false);
+          Alert.alert("Error", result.message || "Unknown error");
+        }
+      } catch (error) {
         setLoading(false);
-        Alert.alert("Error", result.message || "Unknown error");
+        Alert.alert("Login Failed", error.message || "An unexpected error occurred.");
+        console.error("Login error:", error);
       }
-    } catch (error) {
-      setLoading(false);
-      Alert.alert("Login Failed", error.message || "An unexpected error occurred.");
-      console.error("Login error:", error);
+    } else {
+      Alert.alert("Email/Phone and password are required.");
     }
-  } else {
-    Alert.alert("Email/Phone and password are required.");
-  }
-};
-
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       {loading ? (
         <View style={styles.loaderContainer}>
           <ActivityIndicator size="large" color="#3B82F6"
-           style={{ transform: [{ scale: 1.5 }] }} />
-
+            style={{ transform: [{ scale: 1.5 }] }} />
           <Text style={styles.loadingText}>Logging in...</Text>
         </View>
       ) : (
@@ -96,7 +94,7 @@ const handleLogin = async () => {
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity>
+            <TouchableOpacity onPress={() => navigation.navigate("ForgotPasswordScreen")}>
               <Text style={styles.forgotPassword}>Forgot Password?</Text>
             </TouchableOpacity>
 
@@ -155,6 +153,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: "bold",
     marginBottom: 5,
+    color: 'black',
   },
   highlight: {
     color: "#3B82F6",

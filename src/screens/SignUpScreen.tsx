@@ -170,6 +170,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
     marginBottom: 5,
+    color: 'black',
   },
   highlight: {
     color: '#3B82F6',
