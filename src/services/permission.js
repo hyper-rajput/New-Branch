@@ -16,6 +16,7 @@ async function requestUserPermission() {
 
 async function getFCMToken() {
   const token = await messaging().getToken();
+
   // Send this token to your backend!
   // e.g., YourApiClient.registerPushToken(token);
 }
@@ -27,10 +28,10 @@ const ProfileScreen = ({ navigation }) => {
     // Handle foreground messages
     const unsubscribeOnMessage = messaging().onMessage(async remoteMessage => {
       console.log('Foreground Message:', remoteMessage);
-      Alert.alert(
-        remoteMessage.notification.title,
-        remoteMessage.notification.body
-      );
+    //   Alert.alert(
+    //     remoteMessage.notification.title,
+    //     remoteMessage.notification.body
+    //   );
     });
 
     // Handle messages when app is in background or quit and opened by tapping notification

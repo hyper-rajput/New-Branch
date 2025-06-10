@@ -8,18 +8,21 @@ import Voice from "@react-native-community/voice";
 import Tts from 'react-native-tts';
 import EncryptedStorage from 'react-native-encrypted-storage';
 import {initializeNotifications} from '../services/NotificationService';
+import {fetchAndStoreUserDetails} from '../services/api';
 
-
-const Dashboard = ({ navigation }) => {
+const Dashboard = ({ navigation, remoteMessage  }) => {
   const [lastFeedbackTime, setLastFeedbackTime] = useState(null);
   const [proactivePrompt, setProactivePrompt] = useState(null);
   const [isListening, setIsListening] = useState(false);
   const [recognizedText, setRecognizedText] = useState("");
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
+    const [Name, setName] = useState("xxxxxxxxxxxxxxxxxxxx");
 
   const VOICE_ASSISTANT_API_URL = "http://lumia-env.eba-smvczc8e.us-east-1.elasticbeanstalk.com/chat"; // EXAMPLE URL
   
   useEffect(() => {
+    fetchAndStoreUserDetails();
+    
     // Initialize notifications and get the cleanup function
     const unsubscribeNotifications = initializeNotifications();
 
@@ -28,6 +31,44 @@ const Dashboard = ({ navigation }) => {
       unsubscribeNotifications();
     };
   }, []); // Empty dependency array ensures this effect runs only once on mount
+
+  useEffect(() => {
+    const initializeAppData = async () => {
+      // First, fetch and store user details
+      await fetchAndStoreUserDetails();
+
+      // Then, fetch user data from AsyncStorage to set the name
+      try {
+        const userDetailsString = await AsyncStorage.getItem("userDetails");
+        if (userDetailsString) {
+          const userDetails = JSON.parse(userDetailsString);
+          userDetails.name ? setName(`Hey, ${userDetails.name}`) :null ;
+        } else {
+          setName("Hey there!"); // Fallback if user details are not found
+        }
+      } catch (error) {
+        console.error("Error loading user data:", error);
+        setName("Hello!"); // Fallback on error
+      }
+
+      // Initialize notifications and get the cleanup function
+      const unsubscribeNotifications = initializeNotifications();
+
+      // Clean up listeners when the component unmounts
+      return () => {
+        unsubscribeNotifications();
+      };
+    };
+
+    initializeAppData();
+  }, []); // Empty dependency array ensures this effect runs only once on mount
+
+  useEffect(() => {
+    if (remoteMessage){
+      sendVoiceCommandToBackend(`Ask user-,${remoteMessage}`)
+    }
+  }, [remoteMessage]);
+
 
   // Initialize TTS
   useEffect(() => {
@@ -52,21 +93,18 @@ const Dashboard = ({ navigation }) => {
       const timestamp = new Date().toLocaleString();
       await AsyncStorage.setItem("latestInteraction", response);
       await AsyncStorage.setItem("lastResponseTime", timestamp);
-      console.log("Stored feedback:", response, "at", timestamp);
     } catch (error) {
       console.error("Error storing feedback:", error);
     }
   };
 
   const onSpeechStart = useCallback((e) => {
-    console.log("onSpeechStart: ", e);
     setIsListening(true);
     setRecognizedText("");
     setIsProcessingVoice(false);
   }, []);
 
   const onSpeechEnd = useCallback((e) => {
-    console.log("onSpeechEnd: ", e);
     setIsListening(false);
     // Voice.destroy() is usually called AFTER processing the speech result
     // or when the component unmounts. Not typically right after onSpeechEnd,
@@ -74,7 +112,6 @@ const Dashboard = ({ navigation }) => {
   }, []);
 
   const onSpeechResults = useCallback((e) => {
-    console.log("onSpeechResults: ", e);
     if (e.value && e.value.length > 0) {
       const text = e.value[0];
       setRecognizedText(text);
@@ -88,7 +125,6 @@ const Dashboard = ({ navigation }) => {
   }, []);
 
   const onSpeechError = useCallback((e) => {
-    console.log("onSpeechError: ", e);
     setIsListening(false);
     setIsProcessingVoice(false);
 
@@ -141,7 +177,6 @@ const Dashboard = ({ navigation }) => {
         setIsProcessingVoice(false);
 
         await Voice.start("en-US");
-        console.log("Started listening...");
       } catch (error) {
         console.error("Error starting speech recognition: ", error);
         setIsListening(false);
@@ -320,7 +355,7 @@ const Dashboard = ({ navigation }) => {
 </View>
 
 
-      <Text style={styles.cardNumber}>xxxxxxxxxxxxxxxxxxxx</Text>
+      <Text style={styles.cardNumber}>{Name}</Text>
 
       {proactivePrompt && (
         <View style={styles.promptContainer}>

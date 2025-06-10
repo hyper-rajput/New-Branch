@@ -8,11 +8,13 @@ import HealthTrackingScreen from '../screens/HealthTrackingScreen';
 import FamilyMemberScreen from '../screens/FamilyMemberScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import MedicationReminder from '../screens/MedicationReminder';
+import SplashScreen from '../screens/SplashScreen';
 const Stack = createNativeStackNavigator();
 
 const AuthNavigator = () => {
   return (
-    <Stack.Navigator initialRouteName="LoginScreen" screenOptions={{ headerShown: false }}>
+    <Stack.Navigator initialRouteName="SplashScreen" screenOptions={{ headerShown: false }}>
+      <Stack.Screen name ='SplashScreen' component={SplashScreen} />
       <Stack.Screen name="LoginScreen" component={LoginScreen} />
       <Stack.Screen name="SignUpScreen" component={SignUpScreen} />
       <Stack.Screen name="ProfileSetupScreen" component={ProfileSetupScreen} />

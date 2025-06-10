@@ -10,7 +10,8 @@ import {
   ScrollView,
   TouchableWithoutFeedback,
   Keyboard,
-  Alert
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createUser } from '../services/api';
@@ -24,6 +25,7 @@ const SignUpScreen = ({ navigation }) => {
   const [isFamilyMember, setIsFamilyMember] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const handleSignUp = async () => {
     if (!email || !password || !confirmPassword) {
@@ -37,20 +39,25 @@ const SignUpScreen = ({ navigation }) => {
     }
 
     try {
+      setLoading(true);
       const account_type = isFamilyMember ? 'family':'child';
       await createUser(email, password, account_type);
-      navigation.navigate('ProfileSetupScreen');
+      navigation.replace('ProfileSetupScreen');
     } catch (err) {
-      if (err instanceof Error) {
-        Alert.alert('Error:', err.message);
-      } else {
-        console.error('Unknown error:', err);
-      }
+      setLoading(false);
     }
   };
 
   return (
     <SafeAreaView style={styles.container}>
+    {loading ? (
+      <View style={styles.loaderContainer}>
+        <ActivityIndicator size="large" color="#3B82F6"
+          style={{ transform: [{ scale: 1.5 }] }} />
+
+        <Text style={styles.loadingText}> Creating Account..</Text>
+      </View>
+    ) : (
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
@@ -149,7 +156,7 @@ const SignUpScreen = ({ navigation }) => {
             </TouchableOpacity>
           </ScrollView>
         </KeyboardAvoidingView>
-      </TouchableWithoutFeedback>
+      </TouchableWithoutFeedback>)}
     </SafeAreaView>
   );
 };
@@ -170,6 +177,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
     marginBottom: 5,
+    color:'black'
   },
   highlight: {
     color: '#3B82F6',

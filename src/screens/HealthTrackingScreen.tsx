@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -12,6 +12,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import {saveMedicinesApi, saveHealthMetricsApi, GetHealthMetricsApi, GetMedicines, deleteMedicineApi} from '../services/api'; // Import GetMedicinesApi
+
 
 // Custom Dropdown Component for Health Metrics
 const CustomDropdown = ({ label, value, options, onSelect }) => {
@@ -45,17 +47,29 @@ const CustomDropdown = ({ label, value, options, onSelect }) => {
 };
 
 const HealthTrackingScreen = ({ navigation, route }) => {
+
+type HealthData = {
+  id: any;
+  type: any;
+  value: any;
+  timestamp: string;
+};
   const [medicines, setMedicines] = useState(route.params?.medicines || []);
   const [medicineName, setMedicineName] = useState("");
   const [initialQuantity, setInitialQuantity] = useState("");
   const [dailyIntake, setDailyIntake] = useState("");
   const [dosage, setDosage] = useState("");
   const [healthMetric, setHealthMetric] = useState({ type: "Heart Rate", value: "" });
-  const [healthData, setHealthData] = useState([]);
+  const [healthData, setHealthData] = useState<HealthData[]>([]);
 
   const metricOptions = ["Heart Rate", "Blood Pressure", "Glucose", "Weight", "Oxygen Level"];
-
-  const addMedicine = () => {
+  const resetForm = () => {
+    setMedicineName("");
+    setInitialQuantity("");
+    setDailyIntake("");
+    setDosage("");
+  };
+  const addMedicine = async () => {
     if (!medicineName || !initialQuantity || !dailyIntake || isNaN(initialQuantity) || isNaN(dailyIntake) || !dosage || isNaN(dosage)) {
       Alert.alert("Oops!", "Please fill in all fields with valid numbers (e.g., Dosage in mg).", [
         { text: "OK", style: "default" }
@@ -67,29 +81,91 @@ const HealthTrackingScreen = ({ navigation, route }) => {
       id: `${medicineName.toLowerCase()}-${Date.now()}`,
       name: medicineName,
       initialQuantity: parseInt(initialQuantity),
-      currentQuantity: parseInt(initialQuantity),
       dailyIntake: parseInt(dailyIntake),
-      dosage: parseFloat(dosage),
-      fromHealthTracking: true,
+      dosage: `${dosage}mg`,
+      timestamp: new Date().toLocaleString()
+    };
+        // Call the API to save the new medicine
+          try {
+      // Call the API to save the new medicine
+      const apiResponse = await saveMedicinesApi([newMedicine]); // Send as an array
+      console.log("Medicine saved successfully:", apiResponse);
+
+      // If API call is successful, update local state
+      setMedicines([...medicines, newMedicine]);
+      Alert.alert("Success!", `${medicineName} has been added to your list and saved.`);
+      resetForm();
+    } catch (error) {
+      console.error("Error adding medicine:", error);
+      // Alert is already handled by the API service, but you can add more specific logic here if needed
+    } finally {
+      Keyboard.dismiss();
+    }
+  };
+
+
+useEffect(() => {
+    const fetchHealthMetrics = async () => {
+      try {
+        const response = await GetHealthMetricsApi();
+        if (response && Array.isArray(response)) {
+          setHealthData(response.map(item => ({
+            id: item.id,
+            type: item.metric,
+            value: item.data,
+            timestamp: new Date(parseInt(item.timestamp) * 1000).toLocaleString()
+          })));
+        }
+      } catch (error) {
+        console.error("Error fetching health metrics:", error);
+        Alert.alert("Error", "Failed to load health metrics. Please try again later.");
+      }
     };
 
-    const updatedMedicines = [...medicines, newMedicine];
-    setMedicines(updatedMedicines);
-    Alert.alert("Success!", `${medicineName} has been added to your list.`, [
-      { text: "OK", style: "default" }
-    ]);
-    resetForm();
-    Keyboard.dismiss();
-  };
+    fetchHealthMetrics();
+  }, []);
 
-  const resetForm = () => {
-    setMedicineName("");
-    setInitialQuantity("");
-    setDailyIntake("");
-    setDosage("");
-  };
+  // New useEffect hook to fetch medicines
+  useEffect(() => {
+    const fetchMedicines = async () => {
+      try {
+        const response = await GetMedicines();
+        if (response && Array.isArray(response)) {
+          setMedicines(response.map(item => ({
+            id: item.id,
+            name: item.medicine_name,
+            dosage: item.dosage,
+            initialQuantity: item.initial_quantity,
+            dailyIntake: item.daily_intake,
+            timestamp: item.timestamp ? new Date(parseInt(item.timestamp) * 1000).toLocaleString() : 'N/A' // Handle null timestamp
+          })));
+        }
+      } catch (error) {
+        console.error("Error fetching medicines:", error);
+        Alert.alert("Error", "Failed to load medicines. Please try again later.");
+      }
+    };
 
-  const addHealthMetric = () => {
+    fetchMedicines();
+  }, []);
+  //  // Empty dependency array means this runs once on component mount
+  //   const updatedMedicines = [...medicines, newMedicine];
+  //   setMedicines(updatedMedicines);
+  //   Alert.alert("Success!", `${medicineName} has been added to your list.`, [
+  //     { text: "OK", style: "default" }
+  //   ]);
+  //   resetForm();
+  //   Keyboard.dismiss();
+  // };
+
+  // const resetForm = () => {
+  //   setMedicineName("");
+  //   setInitialQuantity("");
+  //   setDailyIntake("");
+  //   setDosage("");
+  // };
+
+  const addHealthMetric = async () => {
     if (!healthMetric.value || isNaN(healthMetric.value)) {
       Alert.alert("Oops!", `Please enter a valid number for ${healthMetric.type}.`, [
         { text: "OK", style: "default" }
@@ -98,13 +174,14 @@ const HealthTrackingScreen = ({ navigation, route }) => {
     }
 
     const newMetric = {
-      id: Date.now(),
+      id: `${healthMetric.type.toLowerCase()}-${Date.now()}`,
       type: healthMetric.type,
       value: parseFloat(healthMetric.value),
       timestamp: new Date().toLocaleString(),
     };
-
-    setHealthData([...healthData, newMetric]);
+   await saveHealthMetricsApi([newMetric]); // Send as an array
+      Alert.alert("Health metric saved successfully");
+      setHealthData([...healthData, newMetric]);
 
     const abnormal = {
       "Heart Rate": newMetric.value < 30 || newMetric.value > 200,
@@ -124,16 +201,26 @@ const HealthTrackingScreen = ({ navigation, route }) => {
     Keyboard.dismiss();
   };
 
-  const deleteMedicine = (id) => {
+ const deleteMedicine = (id) => {
     Alert.alert("Delete Medicine", "Are you sure you want to remove this medicine?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
-        onPress: () => setMedicines(medicines.filter((m) => m.id !== id)),
+        onPress: async () => { // Make the onPress function async
+          try {
+            await deleteMedicineApi(id); // Call the delete API
+            setMedicines(medicines.filter((m) => m.id !== id)); // Update local state on success
+            Alert.alert("Success", "Medicine deleted successfully.");
+          } catch (error) {
+            console.error("Error deleting medicine:", error);
+            Alert.alert("Error", "Failed to delete medicine. Please try again.");
+          }
+        },
         style: "destructive",
       },
     ]);
   };
+
 
   const navigateToReminder = (medicine) => {
     navigation.navigate("MedicationReminder", {
@@ -270,7 +357,7 @@ const HealthTrackingScreen = ({ navigation, route }) => {
               <View key={item.id} style={styles.medicineItem}>
                 <MaterialIcons name="medication" size={28} color="#D32F2F" style={styles.itemIcon} />
                 <Text style={styles.medicineText}>
-                  {item.name} ({item.dosage}mg) - {item.dailyIntake} pill/day
+                  {item.name} ({item.dosage}) - {item.dailyIntake} pill/day
                 </Text>
                 <View style={styles.medicineActions}>
                   <TouchableOpacity onPress={() => navigateToReminder(item)} style={styles.actionButton}>

@@ -115,7 +115,7 @@ const ProfileSetupScreen = ({ navigation }) => {
       Alert.alert("Success!", "Your profile has been saved!", [
         {
           text: "OK",
-          onPress: () => navigation.navigate("Dashboard"),
+          onPress: () => navigation.replace("Dashboard"),
         },
       ]);
     } catch (error) {

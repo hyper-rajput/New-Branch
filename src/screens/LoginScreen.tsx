@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,8 +11,9 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { loginUser } from "../services/api";
+import { loginUser, logout } from "../services/api";
 import Ionicons from "react-native-vector-icons/Ionicons";
+
 
 const LoginScreen = ({ navigation }) => {
   const [emailOrPhone, setEmailOrPhone] = useState("");
@@ -20,7 +21,14 @@ const LoginScreen = ({ navigation }) => {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [isFamilyMember, setIsFamilyMember] = useState(false);
   const [loading, setLoading] = useState(false); // <-- Loader state
-
+  
+const clearAllData = async () => {
+  try {
+    console.log('All data cleared');
+  } catch (error) {
+    console.error('Error clearing storage:', error);
+  }
+};
 const handleLogin = async () => {
   if (emailOrPhone && password) {
     setLoading(true); // Show loader
@@ -33,17 +41,18 @@ const handleLogin = async () => {
         navigation.replace("Dashboard");
       } else {
         setLoading(false);
-        Alert.alert("Error", result.message || "Unknown error");
       }
     } catch (error) {
       setLoading(false);
-      Alert.alert("Login Failed", error.message || "An unexpected error occurred.");
       console.error("Login error:", error);
     }
   } else {
     Alert.alert("Email/Phone and password are required.");
   }
 };
+  useEffect(() => {
+    logout();
+  });
 
 
   return (
@@ -155,6 +164,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: "bold",
     marginBottom: 5,
+    color:'black'
   },
   highlight: {
     color: "#3B82F6",

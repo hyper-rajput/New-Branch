@@ -7,7 +7,7 @@ import EncryptedStorage from 'react-native-encrypted-storage'; // Import Encrypt
 // This handler must be defined outside any component or exported function
 // as it needs to run in the background process, potentially when the app is closed.
 messaging().setBackgroundMessageHandler(async remoteMessage => {
-  console.log('Notification handled in the background by service!', remoteMessage);
+//   console.log('Notification handled in the background by service!', remoteMessage);
   // Perform background tasks here, like updating local storage or making network requests.
   // Example: You could store the notification data for later display.
   // import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -23,7 +23,7 @@ const requestUserPermissionAndGetToken = async () => {
     // Moved EncryptedStorage logic inside the function where it's used
     const tokens = await EncryptedStorage.getItem("authTokens");
     if (!tokens) {
-      console.log("Missing token. Please log in."); // Log error instead of throwing for a service
+      //console.log("Missing token. Please log in."); // Log error instead of throwing for a service
       // You might want to handle this more gracefully, e.g., prompt user to log in
       return; // Exit if no token
     }
@@ -47,7 +47,7 @@ const requestUserPermissionAndGetToken = async () => {
         push_token:token,
         }),
       });
-      Alert.alert(token); // Displaying token in alert, useful for debugging
+    
       console.log('Push token sent to backend successfully!');
 
     } else {
@@ -58,7 +58,6 @@ const requestUserPermissionAndGetToken = async () => {
       );
     }
   } catch (error) {
-    console.error('Error in requestUserPermissionAndGetToken:', error);
   }
 };
 
@@ -76,10 +75,10 @@ export const initializeNotifications = () => {
   const unsubscribeForeground = messaging().onMessage(async remoteMessage => {
     console.log('Notification received in foreground (via service):', remoteMessage);
     // Display a local alert or custom UI based on the notification payload
-    Alert.alert(
-      remoteMessage.notification?.title || 'New Notification',
-      remoteMessage.notification?.body || 'You have a new message.'
-    );
+    // Alert.alert(
+    //   remoteMessage.notification?.title || 'New Notification',
+    //   remoteMessage.notification?.body || 'You have a new message.'
+    // );
   });
 
   // 3. Listener for when a user taps on a notification to open the app from background
@@ -88,19 +87,7 @@ export const initializeNotifications = () => {
   // Assuming you want to handle the remoteMessage, so uncommented and added body.
   const unsubscribeOpenedApp = messaging().onNotificationOpenedApp(
     async remoteMessage => {
-      console.log(
-        'Notification caused app to open from background state (via service):',
-        remoteMessage,
-      );
-      Alert.alert(
-        'App opened from Background',
-        `Data: ${JSON.stringify(remoteMessage.data)}`
-      );
-      // Example navigation:
-      // import { navigate } from './RootNavigation'; // If you have a global navigation service
-      // if (remoteMessage.data?.screen) {
-      //   navigate(remoteMessage.data.screen, remoteMessage.data);
-      // }
+      navigation.navigate('Dashboard',remoteMessage.notification.body);
     },
   );
 
@@ -113,7 +100,6 @@ export const initializeNotifications = () => {
       );
       // Handle initial navigation or data processing
       Alert.alert(
-        'App opened from Killed State',
         `Data: ${JSON.stringify(remoteMessage.data)}`
       );
       // Example navigation:

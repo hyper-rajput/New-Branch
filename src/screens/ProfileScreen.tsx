@@ -15,18 +15,64 @@ const ProfileScreen = ({ navigation }) => {
   const [userData, setUserData] = useState({
     name: "",
     email: "",
+    dob: "",
+    phone: "",
+    address: "",
+    height: "",
+    weight: "",
+    bloodGroup: "",
+    hobby: "",
     emergencyContact: "",
+    medication: "",
+    medicalHistory: "",
   });
 
   useEffect(() => {
     const fetchUserData = async () => {
       try {
         const userDetailsString = await AsyncStorage.getItem("userDetails");
-        setUserData({
-          name: userDetailsString.user_name || "Name not set",
-          email: userDetailsString.user_email || "Email not set",
-          emergencyContact: userDetailsString.emergency_contact || "Emergency contact not set",
-        });
+        if (userDetailsString) {
+          const userDetails = JSON.parse(userDetailsString);
+
+          const {
+            name,
+            email,
+            dob,
+            phone,
+            address,
+            height,
+            weight,
+            bloodGroup,
+            hobby,
+            customHobby,
+            emergencyContact,
+            medName,
+            medDosage,
+            medicalHistory,
+            customMedicalHistory,
+          } = userDetails;
+
+          const computedHobby = hobby === "Other" ? customHobby : hobby;
+          const computedMedication = medName && medDosage ? `${medName} - ${medDosage}` : "None";
+          const computedMedicalHistory = medicalHistory
+            ? medicalHistory + (customMedicalHistory ? ` - ${customMedicalHistory}` : "")
+            : customMedicalHistory || "None";
+
+          setUserData({
+            name: name || "Not set",
+            email: email || "Not set",
+            dob: dob || "Not set",
+            phone: phone || "Not set",
+            address: address || "Not set",
+            height: height || "Not set",
+            weight: weight || "Not set",
+            bloodGroup: bloodGroup || "Not set",
+            hobby: computedHobby || "Not set",
+            emergencyContact: emergencyContact || "None",
+            medication: computedMedication,
+            medicalHistory: computedMedicalHistory,
+          });
+        }
       } catch (error) {
         console.error("Error loading user data:", error);
       }
@@ -37,30 +83,31 @@ const ProfileScreen = ({ navigation }) => {
 
   const handleLogout = async () => {
     try {
-      await logout
+      await logout();
+      navigation.replace("LoginScreen");
     } catch (error) {
       Alert.alert("Error", "Failed to logout. Try again.");
     }
-    navigation.replace("LoginScreen");
   };
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Icon name="account-circle" size={100} color="#333" style={styles.avatar} />
-
       <Text style={styles.name}>{userData.name}</Text>
-
-      <View style={styles.infoContainer}>
-        <Text style={styles.label}>Email</Text>
-        <Text style={styles.info}>{userData.email}</Text>
-
-        <Text style={styles.label}>Emergency Contact</Text>
-        <Text style={styles.info}>{userData.emergencyContact}</Text>
-      </View>
-
-      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+                  <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
         <Text style={styles.logoutButtonText}>Log Out</Text>
       </TouchableOpacity>
+
+      <View style={styles.infoContainer}>
+        {Object.entries(userData).map(([label, value]) => (
+          <View key={label}>
+            <Text style={styles.label}>
+              {label.replace(/([A-Z])/g, " $1").replace(/^./, str => str.toUpperCase())}
+            </Text>
+            <Text style={styles.info}>{value}</Text>
+          </View>
+        ))}
+      </View>
     </ScrollView>
   );
 };
@@ -91,6 +138,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#333",
     marginTop: 20,
+    textTransform: "capitalize",
   },
   info: {
     fontSize: 16,
