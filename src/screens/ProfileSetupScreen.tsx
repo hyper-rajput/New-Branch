@@ -18,8 +18,9 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import MaterialIcons from "react-native-vector-icons/MaterialIcons";
 import { saveUserDetails } from "../services/api";
 
-const CustomDropdown = ({ label, value, options, onSelect }) => {
+const CustomDropdown = ({ label, value, options, onSelect, multiSelect = false }) => {
   const [visible, setVisible] = useState(false);
+
   return (
     <>
       <TouchableOpacity
@@ -29,7 +30,11 @@ const CustomDropdown = ({ label, value, options, onSelect }) => {
           setVisible(true);
         }}
       >
-        <Text style={styles.dropdownText}>{value || label}</Text>
+        <Text style={styles.dropdownText}>
+          {multiSelect && Array.isArray(value) && value.length > 0
+            ? value.join(", ")
+            : value || label}
+        </Text>
         <MaterialIcons name="arrow-drop-down" size={28} color="#2E2E2E" />
       </TouchableOpacity>
 
@@ -43,15 +48,34 @@ const CustomDropdown = ({ label, value, options, onSelect }) => {
             {options.map((option) => (
               <TouchableOpacity
                 key={option}
-                style={styles.modalItem}
+                style={[
+                  styles.modalItem,
+                  multiSelect && value.includes(option) && styles.selectedItem,
+                ]}
                 onPress={() => {
-                  onSelect(option);
-                  setVisible(false);
+                  if (multiSelect) {
+                    onSelect(
+                      value.includes(option)
+                        ? value.filter((item) => item !== option)
+                        : [...value, option]
+                    );
+                  } else {
+                    onSelect(option);
+                    setVisible(false);
+                  }
                 }}
               >
                 <Text style={styles.modalItemText}>{option}</Text>
               </TouchableOpacity>
             ))}
+            {multiSelect && (
+              <TouchableOpacity
+                style={styles.modalDoneButton}
+                onPress={() => setVisible(false)}
+              >
+                <Text style={styles.modalDoneText}>Done</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </TouchableOpacity>
       </Modal>
@@ -72,9 +96,7 @@ const ProfileSetupScreen = ({ navigation }) => {
   const [hobby, setHobby] = useState("");
   const [customHobby, setCustomHobby] = useState("");
   const [emergencyContact, setEmergencyContact] = useState("");
-  const [medName, setMedName] = useState("");
-  const [medDosage, setMedDosage] = useState("");
-  const [medicalHistory, setMedicalHistory] = useState("");
+  const [medicalHistory, setMedicalHistory] = useState([]);
   const [customMedicalHistory, setCustomMedicalHistory] = useState("");
 
   const hobbyOptions = ["Walking", "Reading", "Gardening", "Knitting", "Puzzles", "Other"];
@@ -105,9 +127,10 @@ const ProfileSetupScreen = ({ navigation }) => {
       bloodGroup,
       hobby: hobby === "Other" ? customHobby : hobby,
       emergencyContact: emergencyContact || "None",
-      medication: medName && medDosage ? `${medName} - ${medDosage}` : "None",
-     medicalHistory: medicalHistory + (customMedicalHistory ? ` - ${customMedicalHistory}` : ""),
-
+      medicalHistory:
+        medicalHistory.length > 0
+          ? medicalHistory.join(", ") + (customMedicalHistory ? ` - ${customMedicalHistory}` : "")
+          : "None",
     };
 
     try {
@@ -195,38 +218,35 @@ const ProfileSetupScreen = ({ navigation }) => {
                 placeholderTextColor="#666"
               />
 
-       {/* Address Field */}
-<TextInput
-  style={[styles.customInput, styles.multiLineInput]}
-  placeholder="Enter your full address here"
-  value={address}
-  onChangeText={setAddress}
-  placeholderTextColor="#666"
-  multiline
-  numberOfLines={4}
-  textAlignVertical="top"
-/>
+              <TextInput
+                style={[styles.customInput, styles.multiLineInput]}
+                placeholder="Enter your full address here"
+                value={address}
+                onChangeText={setAddress}
+                placeholderTextColor="#666"
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+              />
 
-{/* Height and Weight Fields Side by Side */}
-<View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-  <TextInput
-    style={[styles.customInput, { flex: 1, marginRight: 8 }]}
-    placeholder="Height (cm)"
-    value={height}
-    onChangeText={setHeight}
-    keyboardType="numeric"
-    placeholderTextColor="#666"
-  />
-  <TextInput
-    style={[styles.customInput, { flex: 1, marginLeft: 8 }]}
-    placeholder="Weight (kg)"
-    value={weight}
-    onChangeText={setWeight}
-    keyboardType="numeric"
-    placeholderTextColor="#666"
-  />
-</View>
-
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <TextInput
+                  style={[styles.customInput, { flex: 1, marginRight: 8 }]}
+                  placeholder="Height (cm)"
+                  value={height}
+                  onChangeText={setHeight}
+                  keyboardType="numeric"
+                  placeholderTextColor="#666"
+                />
+                <TextInput
+                  style={[styles.customInput, { flex: 1, marginLeft: 8 }]}
+                  placeholder="Weight (kg)"
+                  value={weight}
+                  onChangeText={setWeight}
+                  keyboardType="numeric"
+                  placeholderTextColor="#666"
+                />
+              </View>
 
               <CustomDropdown
                 label="Blood Group"
@@ -265,45 +285,24 @@ const ProfileSetupScreen = ({ navigation }) => {
             </View>
 
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Medication</Text>
-              <TextInput
-                style={styles.customInput}
-                placeholder="Medication Name"
-                value={medName}
-                onChangeText={setMedName}
-                placeholderTextColor="#666"
-              />
-              <TextInput
-                style={styles.customInput}
-                placeholder="Dosage"
-                value={medDosage}
-                onChangeText={setMedDosage}
-                keyboardType="numeric"
-                placeholderTextColor="#666"
-              />
-            </View>
-
-            <View style={styles.section}>
               <Text style={styles.sectionTitle}>Medical History</Text>
               <CustomDropdown
-                label="Select Condition"
+                label="Select Conditions"
                 value={medicalHistory}
                 options={medicalHistoryOptions}
                 onSelect={setMedicalHistory}
+                multiSelect={true}
               />
-              
               <TextInput
-  style={[styles.customInput, styles.multiLineInput]}
-  placeholder="Describe your experience or specific condition (optional)"
-  value={customMedicalHistory}
-  onChangeText={setCustomMedicalHistory}
-  placeholderTextColor="#666"
-  multiline
-  numberOfLines={4}
-  textAlignVertical="top"
-/>
-
-              
+                style={[styles.customInput, styles.multiLineInput]}
+                placeholder="Describe your experience or specific condition (optional)"
+                value={customMedicalHistory}
+                onChangeText={setCustomMedicalHistory}
+                placeholderTextColor="#666"
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+              />
             </View>
 
             <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
@@ -378,10 +377,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   multiLineInput: {
-  height: 100,
-  paddingVertical: 10,
-}
-,
+    height: 100,
+    paddingVertical: 10,
+  },
   dropdown: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -413,31 +411,21 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: "#2E2E2E",
   },
-
-unitInputContainer: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  borderWidth: 1,
-  borderColor: '#DDD',
-  borderRadius: 8,
-  paddingHorizontal: 10,
-  marginBottom: 12,
-  backgroundColor: '#FFF',
-},
-
-unitInput: {
-  fontSize: 16,
-  paddingVertical: 12,
-  color: '#2E2E2E',
-},
-
-unitLabel: {
-  fontSize: 16,
-  marginLeft: 6,
-  color: '#555',
-  fontWeight: '500',
-},
-
+  selectedItem: {
+    backgroundColor: "#FFE082",
+  },
+  modalDoneButton: {
+    marginTop: 10,
+    padding: 10,
+    backgroundColor: "#FF7043",
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  modalDoneText: {
+    color: "#FFF",
+    fontSize: 18,
+    fontWeight: "600",
+  },
   submitButton: {
     backgroundColor: "#FF7043",
     padding: 18,
