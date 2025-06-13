@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { logout } from '../services/api'; // Import your logout function from the API service
 
 // Sample profile data (replace with actual data source in a real app)
 const profileData = {
@@ -15,7 +16,8 @@ const profileData = {
 const FamilyMemberProfile: React.FC = () => {
   const navigation = useNavigation();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await logout(); // Call your logout function from the API service
     // Perform any logout logic here (e.g., clear auth token)
     navigation.replace('LoginScreen');
   };

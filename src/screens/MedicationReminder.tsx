@@ -19,7 +19,8 @@ import Slider from "@react-native-community/slider";
 import notifee, { AndroidImportance, TimestampTrigger, TriggerType, AuthorizationStatus } from '@notifee/react-native';
 import Sound from 'react-native-sound';
 import { useNavigation, useRoute } from '@react-navigation/native';
-
+import axios from "axios";
+import EncryptedStorage from 'react-native-encrypted-storage';
 // Define types for medicine data
 interface Medicine {
   id: string;
@@ -71,6 +72,66 @@ const MedicationReminder: React.FC = () => {
   const [startFromToday, setStartFromToday] = useState<boolean>(false);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [sound, setSound] = useState<Sound | null>(null);
+
+  const getAuthTokens = async () => {
+  try {
+    const tokens = await EncryptedStorage.getItem("authTokens");
+    return tokens ? JSON.parse(tokens) : null;
+  } catch (error) {
+    console.error("Failed to retrieve auth tokens:", error);
+    return null;
+  }
+};
+  const BASE_URL = "http://lumia-env.eba-smvczc8e.us-east-1.elasticbeanstalk.com";
+  
+  const api = axios.create({
+    baseURL: BASE_URL,
+    timeout: 5000, // 5 seconds timeout
+  });
+  
+  const saveReminder = async (medicine:any) => {
+    try {
+      const tokens = await getAuthTokens();
+      const idToken = tokens?.idToken;
+  
+      if (!idToken) {
+        Alert.alert("Authentication Error", "Could not retrieve user session. Please log in again.");
+        throw new Error("ID token not available.");
+      }
+      
+  
+  const payload = {
+        idToken,
+        reminder_id: medicine.id,
+        medicine_name: medicine.name,
+        pill_details: medicine.dosage,
+        time: medicine.time.toISOString(),
+        end_date: medicine.duration.toISOString(),
+        amount_per_box: medicine.amountPerBox.toString(),
+        current_quantity: medicine.currentQuantity.toString(),
+        take_medicine_alert: medicine.enableTakeAlert.toString(),
+        ring_phone: medicine.ringPhone.toString(),
+        send_message: medicine.sendMessage.toString(),
+        refill_reminder: medicine.refillReminder.toString(),
+        set_day_before_refill: medicine.refillDays.toString(),
+        set_refill_date: medicine.refillDate.toISOString(),
+        start_from_today: medicine.startFromToday.toString(),
+      };
+  
+      const response = await api.post("/save-medicine-reminder", payload, {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+      
+  if (!response.status == 200) {
+    Alert.alert("Server Error", "Unexpected response status: " + response.status);
+  }
+      return response.data;
+    } catch (error) {
+      Alert.alert("API call error (saveReminder)");
+    }
+  };
 
   // Pre-populate form fields with data from HealthTrackingScreen
   useEffect(() => {
@@ -182,6 +243,7 @@ const MedicationReminder: React.FC = () => {
     };
 
     try {
+      await saveReminder(medicine);
       await notifee.createTriggerNotification(
         {
           id: medicine.id,

@@ -202,6 +202,7 @@ export const logout = async () => {
     try {
       await removeAuthTokens();
       await AsyncStorage.removeItem("userDetails");
+      await AsyncStorage.removeItem("account_type");
       console.log("User successfully logged out and data cleared.");
     } catch (error) {
       console.error("Error during logout:", error);
@@ -210,7 +211,6 @@ export const logout = async () => {
 };
 
 const refreshFirebaseToken = async () => {
-    console.log("Attempting to refresh Firebase token...");
     try {
       const tokens = await getAuthTokens();
       if (!tokens || !tokens.refreshToken) {
@@ -235,15 +235,12 @@ const refreshFirebaseToken = async () => {
       if (errorMessage.includes("expired") || errorMessage.includes("INVALID_REFRESH_TOKEN")) {
           await logout();
           Alert.alert("Session Expired", "Your session has expired. Please log in again.");
-      } else {
-          Alert.alert("Session Refresh Failed", errorMessage);
       }
       return false;
     }
 };
 
 export const checkLoginStatus = async () => {
-    console.log("Checking login status...");
     const tokens = await getAuthTokens();
 
     if (!tokens || !tokens.idToken || !tokens.expiryTime) {
@@ -261,13 +258,10 @@ export const checkLoginStatus = async () => {
       console.log("User is logged in (ID token is valid).");
       return true;
     } else {
-      console.log("ID token expired. Attempting to refresh...");
       const refreshed = await refreshFirebaseToken();
       if (refreshed) {
-        console.log("Token refreshed, user is logged in.");
         return true;
       } else {
-        console.log("Token refresh failed. User is not logged in.");
         return false;
       }
     }
@@ -325,7 +319,6 @@ export const fetchAndStoreUserDetails = async () => {
       }
     } catch (error) {
       const errorMessage = extractApiErrorMessage(error);
-      console.error('Error fetching user details:', errorMessage, error);
       Alert.alert("Fetch Details Failed", errorMessage);
       throw error;
     }
@@ -415,25 +408,15 @@ export const GetHealthMetricsApi = async () => {
     const idToken = tokens?.idToken;
 
     if (!idToken) {
-      // It's good to throw an error here to prevent further execution
-      // and allow the calling function to handle the authentication failure.
       Alert.alert("Authentication Required", "Your session has expired or is invalid. Please log in again.");
       throw new Error("ID token not available for health metrics API call.");
     }
-
-    // IMPORTANT: Confirm with your backend how the ID token should be sent.
-    // This assumes the backend expects the ID token directly as the JSON body.
-    // If your backend expects a JSON object like { "idToken": "yourToken" },
-    // you should change the body to { idToken: idToken }.
     const response = await api.post("/get-health-metric", { idToken: idToken }, {
       headers: {
         "Content-Type": "application/json",
-        // Consider adding Authorization header here if needed for your backend
-        // 'Authorization': `Bearer ${idToken}`,
       },
     });
 
-    // Check for a successful HTTP status code (200-299 range)
     if (response.status < 200 || response.status >= 300) {
       // This handles non-2xx responses from the server
       const serverErrorMessage = response.data?.message || "An unexpected server response occurred.";
@@ -441,13 +424,6 @@ export const GetHealthMetricsApi = async () => {
       throw new Error(`Server error: ${serverErrorMessage} (Status: ${response.status})`);
     }
 
-    // --- Critical part: Returning the correct data structure ---
-    // Based on your previous response example:
-    // response - [ { "id": "metric001", ... }, { "id": "metric003", ... } ]
-    // This means the array of metrics is directly in `response.data`.
-    // If your backend nests it like { "data": [{...}, {...}] }, then it should be `response.data.data`.
-    
-    // Assuming the health metrics array is directly in `response.data`
     if (Array.isArray(response.data)) {
       // Alert.alert("Raw API Response Data", JSON.stringify(response.data, null, 2));
         return response.data;
@@ -477,8 +453,6 @@ export const GetHealthMetricsApi = async () => {
     }
 
     Alert.alert("Error Fetching Health Data", userMessage);
-    // Re-throw the error so the calling component can also catch it if needed,
-    // or return an empty array/null if you prefer to just show no data silently.
     throw error;
   }
 };
@@ -489,16 +463,9 @@ export const GetMedicines = async () => {
     const idToken = tokens?.idToken;
 
     if (!idToken) {
-      // It's good to throw an error here to prevent further execution
-      // and allow the calling function to handle the authentication failure.
       Alert.alert("Authentication Required", "Your session has expired or is invalid. Please log in again.");
       throw new Error("ID token not available for health metrics API call.");
     }
-
-    // IMPORTANT: Confirm with your backend how the ID token should be sent.
-    // This assumes the backend expects the ID token directly as the JSON body.
-    // If your backend expects a JSON object like { "idToken": "yourToken" },
-    // you should change the body to { idToken: idToken }.
     const response = await api.post("/get-medicines", { idToken: idToken }, {
       headers: {
         "Content-Type": "application/json",
@@ -515,13 +482,6 @@ export const GetMedicines = async () => {
       throw new Error(`Server error: ${serverErrorMessage} (Status: ${response.status})`);
     }
 
-    // --- Critical part: Returning the correct data structure ---
-    // Based on your previous response example:
-    // response - [ { "id": "metric001", ... }, { "id": "metric003", ... } ]
-    // This means the array of metrics is directly in `response.data`.
-    // If your backend nests it like { "data": [{...}, {...}] }, then it should be `response.data.data`.
-    
-    // Assuming the health metrics array is directly in `response.data`
     if (Array.isArray(response.data)) {
       // Alert.alert("Raw API Response Data", JSON.stringify(response.data, null, 2));
         return response.data;
@@ -539,8 +499,6 @@ export const GetMedicines = async () => {
     console.error("Error in GetHealthMetricsApi:", error); // Log full error for debugging
 
     if (error.response) {
-      // The request was made and the server responded with a status code
-      // that falls out of the range of 2xx
       userMessage = error.response.data?.message || `Server error: ${error.response.status}`;
     } else if (error.request) {
       // The request was made but no response was received
@@ -551,8 +509,6 @@ export const GetMedicines = async () => {
     }
 
     Alert.alert("Error Fetching Health Data", userMessage);
-    // Re-throw the error so the calling component can also catch it if needed,
-    // or return an empty array/null if you prefer to just show no data silently.
     throw error;
   }
 };
@@ -566,15 +522,6 @@ export const deleteMedicineApi = async (medicineid) => {
       throw new Error("ID token not available.");
     }
 
-    // The payload for a DELETE request is typically sent in the request body
-    // However, some APIs expect identifiers in the URL or as query parameters.
-    // Based on your desired payload structure, we'll send it as a data property
-    // if your API client supports sending a body with DELETE, or as query params.
-
-    // Assuming `api.deletet` (which should probably be `api.delete`)
-    // supports sending a data payload as the second argument for DELETE requests.
-    // If not, you might need to adjust your API client or backend.
-
     const response = await api.delete("/delete-medicine", {
       data: { // Use 'data' for the request body in Axios or similar clients
         idToken,
@@ -587,8 +534,6 @@ export const deleteMedicineApi = async (medicineid) => {
     });
 
     if (response.status === 200) {
-      // If the status is 200, it means the request was successful.
-      // The previous code had an error here, alerting "Server Error" on success.
       console.log("Medicine deleted successfully:", response.data);
       return response.data; // Return data on success
     } else {
@@ -604,7 +549,7 @@ export const deleteMedicineApi = async (medicineid) => {
   }
 };
 
-export const saveReminder = async (medicine) => {
+export const searchFamilyApi = async (uid) => {
   try {
     const tokens = await getAuthTokens();
     const idToken = tokens?.idToken;
@@ -613,39 +558,162 @@ export const saveReminder = async (medicine) => {
       Alert.alert("Authentication Error", "Could not retrieve user session. Please log in again.");
       throw new Error("ID token not available.");
     }
-    
 
-const payload = {
-      idToken,
-      reminder_id: medicine.id,
-      medicine_name: medicine.name,
-      pill_details: medicine.dosage,
-      time: medicine.time.toISOString(),
-      end_date: medicine.duration.toISOString(),
-      amount_per_box: medicine.amountPerBox.toString(),
-      current_quantity: medicine.currentQuantity.toString(),
-      take_medicine_alert: medicine.enableTakeAlert.toString(),
-      ring_phone: medicine.ringPhone.toString(),
-      send_message: medicine.sendMessage.toString(),
-      refill_reminder: medicine.refillReminder.toString(),
-      set_day_before_refill: medicine.refillDays.toString(),
-      set_refill_date: medicine.refillDate.toISOString(),
-      start_from_today: medicine.startFromToday.toString(),
-    };
-
-    const response = await api.post("/set-medicine-reminder", payload, {
+const response = await api.post("/search-child", { idToken: idToken, child_id:uid }, {
       headers: {
         "Content-Type": "application/json",
       },
     });
-    
-if (!response.status == 200) {
-  Alert.alert("Server Error", "Unexpected response status: " + response.status);
-  throw new Error("Unexpected server response");
-}
-    return response.data;
+
+    if (response.status === 200) {
+      return response.data.data; // Return data on success
+    } else {
+      // Handle other successful statuses if applicable (e.g., 204 No Content)
+      Alert.alert("Search Failed", `Server responded with status: ${response.status}.`);
+    }
   } catch (error) {
-    const errorData = error.response?.data || { message: error.message };
-    Alert.alert("API call error (saveReminder):", error);
+    console.error("API call error (searchFamilyApi):", error); // Log the full error
+    const errorMessage = error.response?.data?.message || error.message || "An unknown error occurred.";
+  }
+};
+
+export const sendRequestApi = async (uid) => {
+  try {
+    const tokens = await getAuthTokens();
+    const idToken = tokens?.idToken;
+
+    if (!idToken) {
+      Alert.alert("Authentication Error", "Could not retrieve user session. Please log in again.");
+      throw new Error("ID token not available.");
+    }
+
+const response = await api.post("/request-child-link", { idToken: idToken, child_id:uid }, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (response.status === 200) {
+      return response.data.data; // Return data on success
+    } else {
+      // Handle other successful statuses if applicable (e.g., 204 No Content)
+      Alert.alert("send Request Failed", `Server responded with status: ${response.status}.`);
+    }
+  } catch (error) {
+    console.error("API call error (sendRequestApi):", error); // Log the full error
+    const errorMessage = error.response?.data?.message || error.message || "An unknown error occurred.";
+  }
+};
+
+export const fetchPendingRequestchildApi = async () => {
+  try {
+    const tokens = await getAuthTokens();
+    const idToken = tokens?.idToken;
+
+    if (!idToken) {
+      Alert.alert("Authentication Error", "Could not retrieve user session. Please log in again.");
+      throw new Error("ID token not available.");
+    }
+
+const response = await api.post("/fetch-pending-requests", { idToken: idToken }, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (response.status === 200) {
+            // Alert.alert("Raw API Response Data", JSON.stringify(response.data, null, 2));
+      return response.data.data; // Return data on success
+    } else {
+      // Handle other successful statuses if applicable (e.g., 204 No Content)
+      Alert.alert("Fetch Pending Request Failed", `Server responded with status: ${response.status}.`);
+    }
+  } catch (error) {
+    console.error("API call error (fetchPendingRequestchildApi):", error); // Log the full error
+    const errorMessage = error.response?.data?.message || error.message || "An unknown error occurred.";
+  }
+};
+
+export const handlePendingRequestchildApi = async (id,action) => {
+  try {
+    const tokens = await getAuthTokens();
+    const idToken = tokens?.idToken;
+
+    if (!idToken) {
+      Alert.alert("Authentication Error", "Could not retrieve user session. Please log in again.");
+      throw new Error("ID token not available.");
+    }
+const response = await api.post("/handle-parent-request", { idToken: idToken, parent_id:id, action:action }, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (response.status === 200) {
+      // Alert.alert("Raw API Response Data", JSON.stringify(response.data, null, 2));
+      return response.data.data; // Return data on success
+    } else {
+      // Handle other successful statuses if applicable (e.g., 204 No Content)
+      Alert.alert("Fetch Pending Request Failed");
+    }
+  } catch (error) {
+    console.error("API call error (handlePendingRequestchildApi):", error); // Log the full error
+    const errorMessage = error.response?.data?.message || error.message || "An unknown error occurred.";
+  }
+};
+export const fetchchildApi = async () => {
+  try {
+    const tokens = await getAuthTokens();
+    const idToken = tokens?.idToken;
+
+    if (!idToken) {
+      Alert.alert("Authentication Error", "Could not retrieve user session. Please log in again.");
+      throw new Error("ID token not available.");
+    }
+
+const response = await api.post("/fetch-parent-requests", { idToken: idToken }, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (response.status === 200) {
+
+      return response.data.data; // Return data on success
+    } else {
+      // Handle other successful statuses if applicable (e.g., 204 No Content)
+      Alert.alert("Fetch Pending Request Failed", `Server responded with status: ${response.status}.`);
+    }
+  } catch (error) {
+    console.error("API call error (fetchPendingRequestchildApi):", error); // Log the full error
+    const errorMessage = error.response?.data?.message || error.message || "An unknown error occurred.";
+  }
+};
+
+export const removeParentApi = async (id) => {
+  try {
+    const tokens = await getAuthTokens();
+    const idToken = tokens?.idToken;
+
+    if (!idToken) {
+      Alert.alert("Authentication Error", "Could not retrieve user session. Please log in again.");
+      throw new Error("ID token not available.");
+    }
+    const response = await api.post("/delete-request", { idToken: idToken, target_id:id }, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (response.status === 200) {
+      return response.data.message; // Return data on success
+    } else {
+      // Handle other successful statuses if applicable (e.g., 204 No Content)
+      Alert.alert("Failed to remove parent", `Server responded with status: ${response.status}.`);
+    }
+  } catch (error) {
+   // Log the full error
+    const errorMessage = error.response?.data?.message || error.message || "An unknown error occurred.";
+    Alert.alert("API call error (removeParentApi):", errorMessage); 
   }
 };

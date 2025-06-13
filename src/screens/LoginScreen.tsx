@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { loginUser, logout } from "../services/api";
 import Ionicons from "react-native-vector-icons/Ionicons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 
 const LoginScreen = ({ navigation }) => {
@@ -28,10 +29,10 @@ const LoginScreen = ({ navigation }) => {
       try {
         const account_type = isFamilyMember ? 'family' : 'child';
         const result = await loginUser(emailOrPhone, password, account_type);
-
         if (result.status === "success") {
-          // Navigate to FamilyMemberProfileSetup if isFamilyMember is true, otherwise to Dashboard
-          navigation.replace(isFamilyMember ? "FamilyMemberProfileSetup" : "Dashboard");
+          await AsyncStorage.setItem('account_type', account_type );
+       // Navigate to FamilyMemberProfileSetup if isFamilyMember is true, otherwise to Dashboard
+          navigation.replace(isFamilyMember ? "FamilyDashboard" : "Dashboard");
         } else {
           setLoading(false);
           }

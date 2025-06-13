@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, StyleSheet, SafeAreaView, TouchableOpacity, TextInput, Alert } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
-
+import { searchFamilyApi, sendRequestApi, fetchchildApi,fetchAndStoreUserDetails,removeParentApi } from '../services/api'; // Import your API service for searching family members
 // Define the type for a family member
 interface FamilyMember {
-  id: string;
-  name: string;
-  role: string; // e.g., Parent, Child, Sibling, Grandparent
+  name: string;// e.g., Parent, Child, Sibling, Grandparent
+  status:string;
+  uid: string; // Unique identifier for the family member
 }
 
 // Sample data for approved family members (displayed in dashboard)
@@ -16,12 +16,6 @@ const approvedMembers: FamilyMember[] = [
 ];
 
 // Sample data for searchable elder members (replace with backend fetch later)
-const availableElders: FamilyMember[] = [
-  { id: '1', name: 'John Doe', role: 'Parent' },
-  { id: '2', name: 'Jane Doe', role: 'Parent' },
-  { id: '3', name: 'Mary Smith', role: 'Grandparent' },
-  { id: '4', name: 'Robert Johnson', role: 'Grandparent' },
-];
 
 const FamilyDashboard: React.FC = () => {
   const navigation = useNavigation();
@@ -30,59 +24,106 @@ const FamilyDashboard: React.FC = () => {
   const [members, setMembers] = useState<FamilyMember[]>(approvedMembers);
 
   // Handle search input
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-    if (query.trim() === '') {
+  const handleSearch = async () => {
+    if (searchQuery.trim() === '') {
       setFilteredElders([]);
     } else {
+      try {
+      const result = await searchFamilyApi(searchQuery.trim());
       // Filter elder members by name (case-insensitive) and role (Parent or Grandparent)
-      const results = availableElders.filter(
-        (elder) =>
-          elder.name.toLowerCase().includes(query.toLowerCase()) &&
-          ['Parent', 'Grandparent'].includes(elder.role) &&
-          !members.find((m) => m.id === elder.id) // Exclude already added members
+      if (result && result.name) {
+        const availableElders: FamilyMember[] = [
+        { name: result.name, status:'search', uid:searchQuery.trim() },
+      ];
+        setFilteredElders(availableElders);
+      } else {
+        setFilteredElders([]);
+      }
+    } catch (error) {
+      Alert.alert('Failed to search for elder members. Please try again.');
+      setFilteredElders([]);
+    }
+    }
+  };
+  const handleRemove = async (item: any) => {
+    try {
+      await removeParentApi(item.id);
+      setMembers(prev => prev.filter(member => member.uid !== item.uid));
+      Alert.alert(
+        'Action Confirmed',
+        `Family member has been Removed.`
       );
-      setFilteredElders(results);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to Remove family member.');
     }
   };
 
   // Handle adding a member (send request)
-  const handleAddRequest = (elder: FamilyMember) => {
-    // Placeholder for backend request to send add request
-    // Example: await sendAddRequest(elder.id);
-    console.log(`Sending add request for ${elder.name} (ID: ${elder.id})`);
+  const handleAddRequest = async (elder: FamilyMember) => {
+    try {
+      await sendRequestApi(elder.uid);
 
-    Alert.alert(
-      'Request Sent',
-      `A request to add ${elder.name} has been sent. Waiting for their approval.`,
-      [
-        {
-          text: 'OK',
-          onPress: () => {
-            // Clear search after sending request
-            setSearchQuery('');
-            setFilteredElders([]);
+      // Add the member to the dashboard with status 'pending'
+      setMembers((prev) => [
+        ...prev,
+        { ...elder, status: 'pending' }
+      ]);
+
+      Alert.alert(
+        'Request Sent',
+        `A request to add ${elder.name} has been sent. Waiting for their approval.`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              setSearchQuery('');
+              setFilteredElders([]);
+            },
           },
-        },
-      ]
-    );
-
-    // Simulate approval (for testing; replace with backend logic)
-    // In a real app, approval would update members via backend response
-    setTimeout(() => {
-      setMembers((prev) => [...prev, elder]);
-      Alert.alert('Success', `${elder.name} has approved your request and is now added to your dashboard!`);
-    }, 2000); // Simulated 2-second delay for approval
+        ]
+      );
+    } catch (error) {
+      Alert.alert('Failed to send request. Please try again.');
+    }
   };
+    
+    useEffect(() => {
+      const fetchData = async () => {
+        try {
+          const data = await fetchchildApi();
+          if (data && typeof data === 'object' && !Array.isArray(data)) {
+            const availableElders: FamilyMember[] = Object.entries(data).map(
+              ([uid, item]: [string, any]) => ({
+                uid,
+                name: item.name || '',
+                status: item.status || 'Unknown', // Default to pending, update if API provides status
+              })
+            );
+            setMembers(availableElders);
+          }
+        } catch (error) {
+          Alert.alert('Error', 'Failed to fetch family members.');
+        }
+      };
+      fetchData();
+      fetchAndStoreUserDetails();
+    }, []);
 
   // Render each approved family member item
   const renderFamilyMember = ({ item }: { item: FamilyMember }) => (
     <TouchableOpacity
       style={styles.memberContainer}
-      onPress={() => navigation.navigate('MemberDetails', { memberId: item.id, memberName: item.name })}
+      onPress={() => navigation.navigate('MemberDetails', { memberId: item.uid, memberName: item.name })}
     >
       <Text style={styles.memberName}>{item.name}</Text>
-      <Text style={styles.memberRole}>{item.role}</Text>
+       <Text style={styles.memberRole}>{item.status}</Text>
+       <TouchableOpacity
+                 style={[styles.button, styles.denyButton]}
+                 onPress={() => handleRemove(item)}
+               
+               >
+                 <Text style={styles.buttonText}>Remove</Text>
+               </TouchableOpacity>
     </TouchableOpacity>
   );
 
@@ -91,7 +132,7 @@ const FamilyDashboard: React.FC = () => {
     <View style={styles.searchResultContainer}>
       <View style={styles.searchResultInfo}>
         <Text style={styles.memberName}>{item.name}</Text>
-        <Text style={styles.memberRole}>{item.role}</Text>
+        {/* <Text style={styles.memberRole}>{item.status}</Text> */}
       </View>
       <TouchableOpacity
         style={styles.addButton}
@@ -120,15 +161,20 @@ const FamilyDashboard: React.FC = () => {
           placeholder="Search elder family member..."
           placeholderTextColor="#A0A0A0"
           value={searchQuery}
-          onChangeText={handleSearch}
+          onChangeText={setSearchQuery}
           autoCapitalize="words"
         />
+      </View>
+      <View style={styles.centerButtonContainer}>
+        <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
+          <Text style={styles.searchButtonText}>Search</Text>
+        </TouchableOpacity>
       </View>
       {searchQuery !== '' && filteredElders.length > 0 && (
         <FlatList
           data={filteredElders}
           renderItem={renderSearchResult}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => item.uid}
           style={styles.searchResultsList}
         />
       )}
@@ -138,7 +184,7 @@ const FamilyDashboard: React.FC = () => {
       <FlatList
         data={members}
         renderItem={renderFamilyMember}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.uid}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={<Text style={styles.emptyText}>No family members added yet.</Text>}
       />
@@ -256,6 +302,42 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 20,
   },
+      
+  centerButtonContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  searchButton: {
+    backgroundColor: '#3B82F6',
+    paddingVertical: 8,
+    paddingHorizontal: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 150,
+  },
+  searchButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+    buttonText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+    button: {
+    marginTop: 8,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    minWidth: 80,
+  },
+    denyButton: {
+    backgroundColor: '#DC2626',
+  },
+
 });
 
 export default FamilyDashboard;

@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
-import { View, Text, StyleSheet, SafeAreaView } from "react-native";
+import { View, Text, StyleSheet, SafeAreaView,Alert } from "react-native";
 import { checkLoginStatus, fetchAndStoreUserDetails } from "../services/api";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const SplashScreen = ({ navigation }) => {
   useEffect(() => {
@@ -9,13 +10,12 @@ const SplashScreen = ({ navigation }) => {
         const isLoggedIn = await checkLoginStatus();
 
         if (isLoggedIn) {
-          await fetchAndStoreUserDetails(); // optional if needed before Dashboard
-          navigation.replace("Dashboard");
+          const account_type:any = await AsyncStorage.getItem('account_type');
+          navigation.replace(account_type === 'family' ? "FamilyDashboard":"Dashboard");
         } else {
           navigation.replace("LoginScreen");
         }
       } catch (error) {
-        console.error("Login check failed:", error.message);
         navigation.replace("LoginScreen");
       }
     };

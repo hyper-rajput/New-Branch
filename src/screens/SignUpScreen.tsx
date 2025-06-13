@@ -42,7 +42,7 @@ const SignUpScreen = ({ navigation }) => {
       setLoading(true);
       const account_type = isFamilyMember ? 'family':'child';
       await createUser(email, password, account_type);
-      navigation.replace('ProfileSetupScreen');
+      navigation.replace(isFamilyMember ? "FamilyMemberProfileSetup" : "ProfileSetupScreen");
     } catch (err) {
       setLoading(false);
     }

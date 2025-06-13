@@ -1,6 +1,9 @@
 {
   "compilerOptions": {
-    "jsx": "react"
+    "jsx": "react",
+    "allowJs": true,       // ✅ allow importing .js files
+    "checkJs": false, 
+    
   },
   "extends": "@react-native/typescript-config/tsconfig.json"
 }

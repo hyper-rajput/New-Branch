@@ -1,24 +1,43 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, FlatList, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
+import { fetchPendingRequestchildApi, handlePendingRequestchildApi, removeParentApi } from '../services/api';
 
 // Define types for family member data
 interface FamilyMember {
   id: string;
   email: string;
   name: string;
-  status: 'pending' | 'approved' | 'denied';
+  status: 'pending' | 'approved' | 'declined';
 }
 
 const FamilyMembersScreen: React.FC = () => {
   const navigation = useNavigation();
   const [searchEmail, setSearchEmail] = useState<string>('');
-  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([
-    { id: '1', email: 'john.doe@example.com', name: 'John Doe', status: 'pending' },
-    { id: '2', email: 'jane.smith@example.com', name: 'Jane Smith', status: 'approved' },
-  ]);
+  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const data = await fetchPendingRequestchildApi();
+        if (data && typeof data === 'object' && !Array.isArray(data)) {
+          setFamilyMembers(
+            Object.entries(data).map(([id, item]: [string, any]) => ({
+              id,
+              email: item.email || '',
+              name: item.name || '',
+              status: item.status, // Default to pending, update if API provides status
+            }))
+          );
+        }
+      } catch (error) {
+        Alert.alert('Error', 'Failed to fetch family members.');
+      }
+    };
+    fetchData();
+  }, []);
 
   const handleSearch = () => {
     if (!searchEmail.includes('@')) {
@@ -35,18 +54,36 @@ const FamilyMembersScreen: React.FC = () => {
     setSearchEmail('');
   };
 
-  const handleAction = (id: string, action: 'approve' | 'deny') => {
-    setFamilyMembers(
-      familyMembers.map(member =>
-        member.id === id
-          ? { ...member, status: action === 'approve' ? 'approved' : 'denied' }
-          : member
-      )
-    );
-    Alert.alert(
-      'Action Confirmed',
-      `Family member has been ${action === 'approve' ? 'approved' : 'denied'}.`
-    );
+  const handleAction = async (id: string, action: 'allow' | 'declined') => {
+    try {
+      await handlePendingRequestchildApi(id,action);
+      setFamilyMembers(prev =>
+        prev.map(member =>
+          member.id === id
+            ? { ...member, status: action === 'allow' ? 'approved' : 'declined' }
+            : member
+        )
+      );
+      Alert.alert(
+        'Action Confirmed',
+        `Family member has been ${action === 'allow' ? 'approved' : 'decline'}.`
+      );
+    } catch (error) {
+      Alert.alert('Error', 'Failed to update family member status.');
+    }
+  };
+  
+  const handleRemove = async (item: any) => {
+    try {
+      await removeParentApi(item.id);
+      setFamilyMembers(prev => prev.filter(member => member.id !== item.id));
+      Alert.alert(
+        'Action Confirmed',
+        `Family member has been Removed.`
+      );
+    } catch (error) {
+      Alert.alert('Error', 'Failed to Remove family member.');
+    }
   };
 
   const renderItem = ({ item }: { item: FamilyMember }) => (
@@ -55,19 +92,34 @@ const FamilyMembersScreen: React.FC = () => {
       <Text style={styles.statusText}>Status: {item.status}</Text>
       <View style={styles.buttonContainer}>
         <TouchableOpacity
-          style={[styles.button, styles.approveButton, item.status === 'approved' && styles.disabledButton]}
-          onPress={() => handleAction(item.id, 'approve')}
-          disabled={item.status === 'approved'}
+          style={[
+            styles.button,
+            styles.approveButton,
+            (item.status === 'approved' || item.status === 'declined') && styles.disabledButton
+          ]}
+          onPress={() => {
+            if (!(item.status === 'approved' || item.status === 'declined')) {
+              handleAction(item.id, 'allow');
+            }
+          }}
+          pointerEvents={(item.status === 'approved' || item.status === 'declined') ? 'none' : 'auto'}
         >
           <Text style={styles.buttonText}>Approve</Text>
         </TouchableOpacity>
+        {item.status === 'pending' ? 
         <TouchableOpacity
-          style={[styles.button, styles.denyButton, item.status === 'denied' && styles.disabledButton]}
-          onPress={() => handleAction(item.id, 'deny')}
-          disabled={item.status === 'denied'}
+          style={[styles.button, styles.denyButton]}
+          onPress={() => handleAction(item.id, 'declined')}
         >
           <Text style={styles.buttonText}>Deny</Text>
         </TouchableOpacity>
+      : <TouchableOpacity
+          style={[styles.button, styles.denyButton]}
+          onPress={() => handleRemove(item)}
+        
+        >
+          <Text style={styles.buttonText}>Remove</Text>
+        </TouchableOpacity>}
       </View>
     </View>
   );

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { saveUserDetails } from '../services/api'; // Adjust the import based on your API service file
 
 const FamilyMemberProfileSetup: React.FC = () => {
   const navigation = useNavigation();
@@ -10,19 +11,27 @@ const FamilyMemberProfileSetup: React.FC = () => {
   const [relation, setRelation] = useState<string>('');
   const [address, setAddress] = useState<string>('');
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name || !email || !relation || !address) {
       Alert.alert('Error', 'Please fill in all fields.');
       return;
     }
+    const profileData = { name, email, relation, address };
+    try {
+          await saveUserDetails(profileData);
+          Alert.alert("Success!", "Your profile has been saved!", [
+            {
+              text: "OK",
+              onPress: () => navigation.replace("FamilyDashboard"),
+            },
+          ]);
+        } catch (error) {
+          Alert.alert("Error", error.message || "Could not save profile.");
+        }
 
     // Placeholder for saving logic (e.g., API call or state update)
     // Example: Save to backend or global state
-    const profileData = { name, email, relation, address };
-    console.log('Saving profile:', profileData);
-
-    Alert.alert('Success', 'Profile saved successfully!');
-    navigation.navigate('FamilyDashboard');
+  
   };
 
   return (
