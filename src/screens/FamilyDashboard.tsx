@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet, SafeAreaView, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { View, Text, FlatList, StyleSheet, SafeAreaView, TouchableOpacity, TextInput, Alert, ScrollView, Modal } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
 import { searchFamilyApi, sendRequestApi, fetchchildApi,fetchAndStoreUserDetails,removeParentApi } from '../services/api'; // Import your API service for searching family members
 // Define the type for a family member
@@ -8,12 +9,21 @@ interface FamilyMember {
   name: string;// e.g., Parent, Child, Sibling, Grandparent
   status:string;
   uid: string; // Unique identifier for the family member
+  role: string;
 }
 
-// Sample data for approved family members (displayed in dashboard)
-const approvedMembers: FamilyMember[] = [
-  // Initially empty; populated after approval
-];
+// Define the type for chat summary analysis
+interface ChatSummary {
+  moodTrend: string;
+  topicsDiscussed: string[];
+  concerns: string[];
+  lastUpdated: string;
+  engagementLevel: string;
+  sentimentScore: number;
+}
+
+// Sample data for approved family members
+const approvedMembers: FamilyMember[] = [];
 
 // Sample data for searchable elder members (replace with backend fetch later)
 
@@ -22,6 +32,7 @@ const FamilyDashboard: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [filteredElders, setFilteredElders] = useState<FamilyMember[]>([]);
   const [members, setMembers] = useState<FamilyMember[]>(approvedMembers);
+  const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
 
   // Handle search input
   const handleSearch = async () => {
@@ -143,6 +154,23 @@ const FamilyDashboard: React.FC = () => {
     </View>
   );
 
+  // Render mood trend items
+  const renderMoodTrend = ({ item }: { item: string }) => (
+    <View style={styles.moodTrendItem}>
+      <Text style={styles.moodTrendText}>{item}</Text>
+    </View>
+  );
+
+  // Render topics discussed
+  const renderTopic = ({ item }: { item: string }) => (
+    <Text style={styles.summaryItem}>• {item}</Text>
+  );
+
+  // Render concerns
+  const renderConcern = ({ item }: { item: string }) => (
+    <Text style={styles.summaryItem}>• {item}</Text>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -154,40 +182,193 @@ const FamilyDashboard: React.FC = () => {
         </TouchableOpacity>
         <Text style={styles.title}>Family Dashboard</Text>
       </View>
-      <View style={styles.searchContainer}>
-        <Ionicons name="search" size={20} color="#A0A0A0" style={styles.searchIcon} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search elder family member..."
-          placeholderTextColor="#A0A0A0"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          autoCapitalize="words"
-        />
-      </View>
+
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={20} color="#A0A0A0" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search elder family member..."
+            placeholderTextColor="#A0A0A0"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="words"
+          />
+        </View>
       <View style={styles.centerButtonContainer}>
         <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
           <Text style={styles.searchButtonText}>Search</Text>
         </TouchableOpacity>
       </View>
-      {searchQuery !== '' && filteredElders.length > 0 && (
-        <FlatList
-          data={filteredElders}
-          renderItem={renderSearchResult}
-          keyExtractor={(item) => item.uid}
-          style={styles.searchResultsList}
-        />
-      )}
-      {searchQuery !== '' && filteredElders.length === 0 && (
-        <Text style={styles.noResultsText}>No elder members found.</Text>
-      )}
-      <FlatList
-        data={members}
-        renderItem={renderFamilyMember}
-        keyExtractor={(item) => item.uid}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={<Text style={styles.emptyText}>No family members added yet.</Text>}
-      />
+
+        {/* Search Results */}
+        {searchQuery !== '' && filteredElders.length > 0 && (
+          <FlatList
+            data={filteredElders}
+            renderItem={renderSearchResult}
+            keyExtractor={(item) => item.uid}
+            style={styles.searchResultsList}
+          />
+        )}
+        {searchQuery !== '' && filteredElders.length === 0 && (
+          <Text style={styles.noResultsText}>No elder members found.</Text>
+        )}
+
+        {/* Mood Compartment */}
+        <View style={styles.compartment}>
+          <Text style={styles.compartmentTitle}>Elder's Mood Overview</Text>
+          <View style={styles.compartmentContent}>
+            <Text style={styles.moodText}>
+              {elderMood.mood} {elderMood.emoji}
+            </Text>
+            <Text style={styles.moodDescription}>{elderMood.moodDescription}</Text>
+            <Text style={styles.label}>Mood Trend (Last 3 Days):</Text>
+            <FlatList
+              data={elderMood.moodTrend}
+              renderItem={renderMoodTrend}
+              keyExtractor={(item, index) => index.toString()}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.moodTrendList}
+            />
+            <Text style={styles.lastUpdated}>Last Updated: {elderMood.lastUpdated}</Text>
+          </View>
+        </View>
+
+        {/* Medication Status Compartment */}
+        <View style={styles.compartment}>
+          <Text style={styles.compartmentTitle}>Medication Adherence</Text>
+          <View style={styles.compartmentContent}>
+            <View style={styles.medicationStatusRow}>
+              <MaterialIcons
+                name={medicationStatus.allTaken ? 'check-circle' : 'cancel'}
+                size={24}
+                color={medicationStatus.allTaken ? '#4CAF50' : '#F44336'}
+                style={styles.statusIcon}
+              />
+              <Text style={styles.medicationText}>
+                {medicationStatus.allTaken
+                  ? 'All medicines taken today'
+                  : 'Some medicines missed today'}
+              </Text>
+            </View>
+            <View style={styles.medicationDetailRow}>
+              <Text style={styles.label}>Missed Doses (Last 7 Days):</Text>
+              <Text style={styles.value}>{medicationStatus.missedDoses}</Text>
+            </View>
+            <View style={styles.medicationDetailRow}>
+              <Text style={styles.label}>Adherence Rate:</Text>
+              <Text style={styles.value}>{medicationStatus.adherenceRate}%</Text>
+            </View>
+            <View style={styles.medicationDetailRow}>
+              <Text style={styles.label}>Next Dose:</Text>
+              <Text style={styles.value}>{medicationStatus.nextDose}</Text>
+            </View>
+            <TouchableOpacity style={styles.actionButton}>
+              <Text style={styles.actionButtonText}>View Schedule</Text>
+            </TouchableOpacity>
+            <Text style={styles.lastUpdated}>Last Updated: {medicationStatus.lastUpdated}</Text>
+          </View>
+        </View>
+
+        {/* Chat Summary Analysis Compartment */}
+        <View style={styles.compartment}>
+          <View style={styles.compartmentHeader}>
+            <Text style={styles.compartmentTitle}>Chat Insights with Lumia</Text>
+            <TouchableOpacity onPress={() => setIsSummaryExpanded(true)}>
+              <Ionicons name="expand" size={24} color="#333" />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.compartmentContent}>
+            <View style={styles.summaryRow}>
+              <Text style={styles.label}>Engagement Level:</Text>
+              <Text style={styles.value}>{chatSummary.engagementLevel}</Text>
+            </View>
+            <Text style={styles.label}>Sentiment Score:</Text>
+            <View style={styles.sentimentContainer}>
+              <View style={[styles.sentimentBar, { width: `${chatSummary.sentimentScore}%` }]} />
+              <Text style={styles.sentimentScore}>{chatSummary.sentimentScore}/100</Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.label}>Mood Trend:</Text>
+              <Text style={styles.value}>{chatSummary.moodTrend}</Text>
+            </View>
+            <Text style={styles.label}>Topics Discussed:</Text>
+            <FlatList
+              data={chatSummary.topicsDiscussed}
+              renderItem={renderTopic}
+              keyExtractor={(item, index) => index.toString()}
+              style={styles.summaryList}
+            />
+            <Text style={styles.label}>Concerns Noted:</Text>
+            <FlatList
+              data={chatSummary.concerns}
+              renderItem={renderConcern}
+              keyExtractor={(item, index) => index.toString()}
+              style={styles.summaryList}
+            />
+            <Text style={styles.lastUpdated}>Last Updated: {chatSummary.lastUpdated}</Text>
+          </View>
+        </View>
+
+        {/* Approved Family Members */}
+        <View style={styles.approvedMembersContainer}>
+          <FlatList
+            data={members}
+            renderItem={renderFamilyMember}
+            keyExtractor={(item) => item.uid}
+            contentContainerStyle={styles.listContent}
+            ListEmptyComponent={<Text style={styles.emptyText}>No family members added yet.</Text>}
+          />
+        </View>
+      </ScrollView>
+
+      {/* Full-Screen Chat Summary Modal */}
+      <Modal
+        visible={isSummaryExpanded}
+        animationType="slide"
+        transparent={false}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Chat Insights with Lumia</Text>
+            <TouchableOpacity onPress={() => setIsSummaryExpanded(false)}>
+              <Ionicons name="close" size={30} color="#333" />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalContent}>
+            <View style={styles.modalSummaryRow}>
+              <Text style={styles.modalLabel}>Engagement Level:</Text>
+              <Text style={styles.modalValue}>{chatSummary.engagementLevel}</Text>
+            </View>
+            <Text style={styles.modalLabel}>Sentiment Score:</Text>
+            <View style={styles.sentimentContainer}>
+              <View style={[styles.sentimentBar, { width: `${chatSummary.sentimentScore}%` }]} />
+              <Text style={styles.sentimentScore}>{chatSummary.sentimentScore}/100</Text>
+            </View>
+            <View style={styles.modalSummaryRow}>
+              <Text style={styles.modalLabel}>Mood Trend:</Text>
+              <Text style={styles.modalValue}>{chatSummary.moodTrend}</Text>
+            </View>
+            <Text style={styles.modalLabel}>Topics Discussed:</Text>
+            <FlatList
+              data={chatSummary.topicsDiscussed}
+              renderItem={renderTopic}
+              keyExtractor={(item, index) => index.toString()}
+              style={styles.modalSummaryList}
+            />
+            <Text style={styles.modalLabel}>Concerns Noted:</Text>
+            <FlatList
+              data={chatSummary.concerns}
+              renderItem={renderConcern}
+              keyExtractor={(item, index) => index.toString()}
+              style={styles.modalSummaryList}
+            />
+            <Text style={styles.modalLastUpdated}>Last Updated: {chatSummary.lastUpdated}</Text>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -201,17 +382,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    marginVertical: 20,
+    paddingVertical: 20,
   },
   profileIcon: {
-    marginRight: 10,
+    marginRight: 12,
   },
   title: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#333',
     flex: 1,
     textAlign: 'center',
+  },
+  scrollContent: {
+    paddingBottom: 20,
   },
   searchContainer: {
     flexDirection: 'row',
@@ -222,7 +406,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginHorizontal: 16,
     marginBottom: 16,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   searchIcon: {
     marginRight: 8,
@@ -234,7 +419,6 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   searchResultsList: {
-    maxHeight: 200,
     marginHorizontal: 16,
     marginBottom: 16,
   },
@@ -265,14 +449,153 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  listContent: {
+  compartment: {
+    backgroundColor: '#fff',
+    marginHorizontal: 16,
+    marginVertical: 8,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  compartmentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#D1D5DB',
+  },
+  compartmentTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#333',
+  },
+  compartmentContent: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  moodText: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  moodDescription: {
+    fontSize: 16,
+    color: '#555',
+    marginBottom: 12,
+    lineHeight: 22,
+  },
+  moodTrendList: {
+    marginBottom: 12,
+  },
+  moodTrendItem: {
+    backgroundColor: '#E8F5E9',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginRight: 8,
+  },
+  moodTrendText: {
+    fontSize: 14,
+    color: '#2E7D32',
+    fontWeight: '500',
+  },
+  medicationStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  statusIcon: {
+    marginRight: 8,
+  },
+  medicationText: {
+    fontSize: 18,
+    color: '#333',
+    fontWeight: '500',
+  },
+  medicationDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  actionButton: {
+    backgroundColor: '#3B82F6',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  value: {
+    fontSize: 16,
+    color: '#333',
+  },
+  lastUpdated: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  summaryItem: {
+    fontSize: 16,
+    color: '#333',
+    marginVertical: 4,
+    lineHeight: 22,
+  },
+  summaryList: {
+    marginBottom: 12,
+  },
+  sentimentContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  sentimentBar: {
+    height: 10,
+    backgroundColor: '#4CAF50',
+    borderRadius: 5,
+    marginRight: 8,
+    flex: 1,
+  },
+  sentimentScore: {
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
+  },
+  approvedMembersContainer: {
+    marginHorizontal: 16,
+    marginTop: 8,
+  },
+  listContent: {
     paddingBottom: 20,
   },
   memberContainer: {
     backgroundColor: '#fff',
     padding: 16,
-    marginVertical: 8,
+    marginVertical: 4,
     borderRadius: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -294,13 +617,96 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     textAlign: 'center',
-    marginVertical: 10,
+    marginVertical: 12,
   },
   emptyText: {
     fontSize: 16,
     color: '#666',
     textAlign: 'center',
-    marginTop: 20,
+     marginTop: 20,
+    marginVertical: 12,
+  },
+       
+  centerButtonContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  searchButton: {
+    backgroundColor: '#3B82F6',
+    paddingVertical: 8,
+    paddingHorizontal: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 150,
+  },
+  searchButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+    buttonText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+    button: {
+    marginTop: 8,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    minWidth: 80,
+  },
+    denyButton: {
+    backgroundColor: '#DC2626',
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#D1D5DB',
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#333',
+  },
+  modalContent: {
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+    paddingBottom: 40,
+  },
+  modalLabel: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  modalValue: {
+    fontSize: 18,
+    color: '#333',
+  },
+  modalSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalSummaryList: {
+    marginBottom: 16,
+  },
+  modalLastUpdated: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 8,
   },
       
   centerButtonContainer: {
