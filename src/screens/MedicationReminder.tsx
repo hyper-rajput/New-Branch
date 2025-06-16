@@ -11,13 +11,18 @@ import {
   Platform,
   Keyboard,
   ScrollView,
-  SafeAreaView, // Corrected import
+  SafeAreaView,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import Slider from "@react-native-community/slider";
-import notifee, { AndroidImportance, TimestampTrigger, TriggerType, AuthorizationStatus } from '@notifee/react-native';
-import Sound from 'react-native-sound';
+import notifee, {
+  AndroidImportance,
+  TimestampTrigger,
+  TriggerType,
+  AuthorizationStatus,
+  EventType,
+} from '@notifee/react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 
 // Define types for medicine data
@@ -70,7 +75,50 @@ const MedicationReminder: React.FC = () => {
   const [refillReminderText, setRefillReminderText] = useState<string>("");
   const [startFromToday, setStartFromToday] = useState<boolean>(false);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
-  const [sound, setSound] = useState<Sound | null>(null);
+
+  // Notifee setup: channel, permissions, and action handler
+  useEffect(() => {
+    const setupNotifications = async () => {
+      if (Platform.OS === "android") {
+        try {
+          await notifee.createChannel({
+            id: "alarm",
+            name: "Alarm Channel",
+            importance: AndroidImportance.HIGH,
+            sound: "alarm",
+            vibration: true,
+            bypassDnd: true,
+            channelType: "alarm",
+          });
+        } catch (error) {
+          console.error("Failed to create notification channel:", error);
+          Alert.alert("Error", "Failed to set up notifications. Please try again.");
+          return;
+        }
+      }
+      const permission = await notifee.requestPermission();
+      if (permission.authorizationStatus !== AuthorizationStatus.AUTHORIZED) {
+        Alert.alert("Permission Required", "Please enable notifications for reminders.");
+        return;
+      }
+      // Listen for notification actions (Yes/No)
+      const unsubscribe = notifee.onForegroundEvent(async ({ type, detail }) => {
+        if (type === EventType.ACTION_PRESS) {
+          const { pressAction, notification } = detail;
+          const medicineId = notification?.data?.medicineId;
+          if (pressAction.id === 'yes') {
+            Alert.alert("Great!", "You confirmed taking your medicine.");
+            // Optionally update state or backend here
+          } else if (pressAction.id === 'no') {
+            Alert.alert("Reminder", "You marked the medicine as not taken.");
+            // Optionally update state or backend here
+          }
+        }
+      });
+      return () => unsubscribe();
+    };
+    setupNotifications();
+  }, [medicines]);
 
   // Pre-populate form fields with data from HealthTrackingScreen
   useEffect(() => {
@@ -79,139 +127,86 @@ const MedicationReminder: React.FC = () => {
       setDosage(newMedicineFromHealth.dosage || "");
       setAmountPerBox(newMedicineFromHealth.initialQuantity || 10);
       setCurrentQuantity(newMedicineFromHealth.currentQuantity || 10);
-
-      // Prompt user to set reminder time
       Alert.alert("Set Reminder", "Please set the reminder time for your medicine.");
     }
   }, [newMedicineFromHealth]);
 
-  // Setup notifications
-  useEffect(() => {
-    const setupNotifications = async () => {
-      // Initialize notification channel for Android
-      if (Platform.OS === "android") {
-        try {
-          await notifee.createChannel({
-      id: "alarm",
-      name: "Alarm Channel",
-      importance: AndroidImportance.HIGH,
-      sound: "alarm",
-      vibration: true,
-      bypassDnd: true,
-      // @ts-ignore
-      channelType: "alarm",
-    });
-  }
-  catch (error) {
-          console.error("Failed to create notification channel:", error);
-          Alert.alert("Error", "Failed to set up notifications. Please try again.");
-          return;
-        }
-      }
-
-      // Request notification permissions
-      const granted = await registerForPushNotifications();
-      if (!granted) return;
-
-      // Listen for foreground notification events
-      const subscription = notifee.onForegroundEvent(async ({ type, detail }) => {
-        if (type === notifee.EventType.DELIVERED) {
-          const medicineId = detail.notification?.data?.medicineId as string;
-          const medicine = medicines.find((m) => m.id === medicineId);
-          if (medicine && medicine.ringPhone) await playSound();
-        }
-      });
-
-      return () => {
-        subscription();
-        if (sound) sound.release();
-      };
-    };
-
-    setupNotifications();
-  }, [medicines]);
-
-  const registerForPushNotifications = async () => {
-    const permission = await notifee.requestPermission();
-    if (permission.authorizationStatus !== AuthorizationStatus.AUTHORIZED) {
-      Alert.alert("Permission Required", "Please enable notifications for reminders.");
-      return false;
-    }
-    return true;
-  };
-
-  const playSound = async () => {
-    try {
-      const soundObj = new Sound(require("../../assets/ringtone.mp3"), (error) => {
-        if (error) {
-          console.log("Error loading sound:", error);
-          return;
-        }
-        setSound(soundObj);
-        soundObj.play((success) => {
-          if (!success) {
-            console.log("Sound playback failed");
-          }
-        });
-      });
-    } catch (error) {
-      console.log("Error playing sound:", error);
-    }
-  };
-
+  // --- SCHEDULE NOTIFICATIONS ---
   const scheduleNotification = async (medicine: Medicine) => {
     if (!medicine.enableTakeAlert) return;
-
     const now = new Date();
     const selectedHour = medicine.time.getHours();
     const selectedMinute = medicine.time.getMinutes();
-    const triggerDate = new Date();
-    triggerDate.setHours(selectedHour, selectedMinute, 0, 0);
-
-    if (!medicine.startFromToday && triggerDate <= now) {
-      triggerDate.setDate(triggerDate.getDate() + 1);
-    }
-
-    if (triggerDate <= now) {
-      triggerDate.setDate(triggerDate.getDate() + 1);
-    }
-
-    const trigger: TimestampTrigger = {
+    // Scheduled time (e.g., 10:00 AM)
+    const scheduledDate = new Date();
+    scheduledDate.setHours(selectedHour, selectedMinute, 0, 0);
+    // 10 minutes before scheduled time
+    const beforeDate = new Date(scheduledDate.getTime() - 10 * 60 * 1000);
+    if (beforeDate <= now) beforeDate.setDate(beforeDate.getDate() + 1);
+    if (scheduledDate <= now) scheduledDate.setDate(scheduledDate.getDate() + 1);
+    // --- 1. Notification 10 minutes before ---
+    const beforeTrigger: TimestampTrigger = {
       type: TriggerType.TIMESTAMP,
-      timestamp: triggerDate.getTime(),
+      timestamp: beforeDate.getTime(),
     };
-
     try {
       await notifee.createTriggerNotification(
         {
-          id: medicine.id,
-          title: "Medication Reminder",
-          body: `Time to take ${medicine.dosage} of ${medicine.name}`,
+          id: `${medicine.id}-before`,
+          title: "Medicine Reminder",
+          body: `Reminder: Your time to take ‘${medicine.name}’ medicine is after 10 minutes.`,
           data: { medicineId: medicine.id },
-         android: {
-  channelId: "alarm",
-  pressAction: { id: "default" },
-  sound: "alarm",
-  fullScreenAction: { id: "default" },
-},
+          android: {
+            channelId: "alarm",
+            pressAction: { id: "default" },
+            sound: "alarm",
+          },
         },
-        trigger
+        beforeTrigger
       );
     } catch (error) {
-      console.error("Failed to schedule notification:", error);
-      Alert.alert("Error", "Failed to schedule the notification. Please try again.");
+      console.error("Failed to schedule 'before' notification:", error);
     }
-
+    // --- 2. Notification at scheduled time with actions ---
+    const atTimeTrigger: TimestampTrigger = {
+      type: TriggerType.TIMESTAMP,
+      timestamp: scheduledDate.getTime(),
+    };
+    try {
+      await notifee.createTriggerNotification(
+        {
+          id: `${medicine.id}-ontime`,
+          title: "Did you take your medicine?",
+          body: `Did you take your ‘${medicine.name}’ medicine?`,
+          data: { medicineId: medicine.id },
+          android: {
+            channelId: "alarm",
+            pressAction: { id: "default" },
+            sound: "alarm",
+            actions: [
+              { title: "Yes", pressAction: { id: "yes" } },
+              { title: "No", pressAction: { id: "no" } },
+            ],
+          },
+          ios: {
+            categoryId: "med_reminder",
+          },
+        },
+        atTimeTrigger
+      );
+    } catch (error) {
+      console.error("Failed to schedule 'ontime' notification:", error);
+    }
+    // Optionally, handle refill reminder as before
     if (medicine.refillReminder && medicine.refillDate) {
+      const now = new Date();
       const refillTriggerDate = new Date(medicine.refillDate);
       refillTriggerDate.setDate(refillTriggerDate.getDate() - medicine.refillDays);
-
       if (refillTriggerDate > now) {
         const refillTrigger: TimestampTrigger = {
           type: TriggerType.TIMESTAMP,
           timestamp: refillTriggerDate.getTime(),
         };
-
         try {
           await notifee.createTriggerNotification(
             {
@@ -227,7 +222,6 @@ const MedicationReminder: React.FC = () => {
           );
         } catch (error) {
           console.error("Failed to schedule refill notification:", error);
-          Alert.alert("Error", "Failed to schedule the refill notification. Please try again.");
         }
       }
     }
@@ -243,7 +237,6 @@ const MedicationReminder: React.FC = () => {
       Alert.alert("Error", "Please fill in all required fields.");
       return;
     }
-
     const newMedicine: Medicine = {
       id: medicineName.toLowerCase(),
       name: medicineName,
@@ -261,9 +254,7 @@ const MedicationReminder: React.FC = () => {
       refillDate: new Date(refillDate),
       startFromToday,
     };
-
     setMedicines((prev) => [...prev, newMedicine]);
-
     if (enableTakeAlert || refillReminder) {
       scheduleNotification(newMedicine);
     } else {
@@ -272,7 +263,6 @@ const MedicationReminder: React.FC = () => {
         "You haven't enabled the 'Take Medicine Alert' or 'Refill Reminder'. Enable at least one to receive notifications."
       );
     }
-
     const timeString = time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     Alert.alert("Success", `Medicine added with reminder at ${timeString}`);
     resetForm();
