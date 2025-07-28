@@ -6,14 +6,17 @@ import {
   TouchableOpacity,
   Alert,
   ScrollView,
+  Platform,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { logout } from "../services/api";
+import { GlobalStyles, COLORS } from '../styles/GlobalStyles';
 
 const ProfileScreen = ({ navigation }) => {
   const [userData, setUserData] = useState({
     name: "",
+    uid: "",
     email: "",
     dob: "",
     phone: "",
@@ -22,8 +25,9 @@ const ProfileScreen = ({ navigation }) => {
     weight: "",
     bloodGroup: "",
     hobby: "",
+    dietaryPreference: "",
+    allergies: "",
     emergencyContact: "",
-    medication: "",
     medicalHistory: "",
   });
 
@@ -36,6 +40,7 @@ const ProfileScreen = ({ navigation }) => {
 
           const {
             name,
+            uid,
             email,
             dob,
             phone,
@@ -43,23 +48,24 @@ const ProfileScreen = ({ navigation }) => {
             height,
             weight,
             bloodGroup,
-            hobby,
-            customHobby,
+            selectedInterests,
+            dietaryPreference,
+            allergies,
             emergencyContact,
-            medName,
-            medDosage,
             medicalHistory,
-            customMedicalHistory,
           } = userDetails;
 
-          const computedHobby = hobby === "Other" ? customHobby : hobby;
-          const computedMedication = medName && medDosage ? `${medName} - ${medDosage}` : "None";
-          const computedMedicalHistory = medicalHistory
-            ? medicalHistory + (customMedicalHistory ? ` - ${customMedicalHistory}` : "")
-            : customMedicalHistory || "None";
+          const computedHobby = Array.isArray(selectedInterests)
+            ? selectedInterests.join(", ")
+            : selectedInterests || "Not set";
+          const computedAllergies = Array.isArray(allergies)
+            ? allergies.join(", ")
+            : allergies || "None";
+          const computedMedicalHistory = medicalHistory || "None";
 
           setUserData({
             name: name || "Not set",
+            uid: uid || "Not set",
             email: email || "Not set",
             dob: dob || "Not set",
             phone: phone || "Not set",
@@ -68,8 +74,9 @@ const ProfileScreen = ({ navigation }) => {
             weight: weight || "Not set",
             bloodGroup: bloodGroup || "Not set",
             hobby: computedHobby || "Not set",
+            dietaryPreference: dietaryPreference || "Not set",
+            allergies: computedAllergies,
             emergencyContact: emergencyContact || "None",
-            medication: computedMedication,
             medicalHistory: computedMedicalHistory,
           });
         }
@@ -91,72 +98,159 @@ const ProfileScreen = ({ navigation }) => {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Icon name="account-circle" size={100} color="#333" style={styles.avatar} />
-      <Text style={styles.name}>{userData.name}</Text>
-                  <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-        <Text style={styles.logoutButtonText}>Log Out</Text>
-      </TouchableOpacity>
-
-      <View style={styles.infoContainer}>
-        {Object.entries(userData).map(([label, value]) => (
-          <View key={label}>
-            <Text style={styles.label}>
-              {label.replace(/([A-Z])/g, " $1").replace(/^./, str => str.toUpperCase())}
-            </Text>
-            <Text style={styles.info}>{value}</Text>
-          </View>
-        ))}
+    <ScrollView contentContainerStyle={profileStyles.bgContainer}>
+      {/* Back Button */}
+      <View style={profileStyles.headerRow}>
+        <TouchableOpacity onPress={() => navigation.navigate('Dashboard')} style={profileStyles.backButton}>
+          <Icon name="arrow-back" size={28} color={COLORS.text} />
+        </TouchableOpacity>
+      </View>
+      <View style={profileStyles.cardContainer}>
+        <Icon name="account-circle" size={100} color={COLORS.primary} style={profileStyles.avatar} />
+        <Text style={profileStyles.name}>{userData.name}</Text>
+        <View style={profileStyles.uidRow}>
+          <Text style={profileStyles.uidText}>UID: {userData.uid}</Text>
+          <TouchableOpacity
+            onPress={() => {
+              if (userData.uid !== "Not set") {
+                import("react-native").then(({ Clipboard }) => {
+                  Clipboard.setString(userData.uid);
+                  Alert.alert("Copied", "UID copied to clipboard!");
+                });
+              }
+            }}
+            style={{ padding: 4 }}
+          >
+            <Icon name="content-copy" size={20} color={COLORS.primary} />
+          </TouchableOpacity>
+        </View>
+        <View style={profileStyles.infoList}>
+          {Object.entries(userData).map(([label, value]) => (
+            <View key={label} style={profileStyles.infoCard}>
+              <Text style={profileStyles.label}>
+                {label.replace(/([A-Z])/g, " $1").replace(/^./, str => str.toUpperCase())}
+              </Text>
+              <Text style={profileStyles.info}>{value}</Text>
+            </View>
+          ))}
+        </View>
+        <TouchableOpacity style={profileStyles.logoutButton} onPress={handleLogout}>
+          <Text style={profileStyles.logoutButtonText}>Log Out</Text>
+        </TouchableOpacity>
       </View>
     </ScrollView>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    paddingVertical: 50,
-    paddingHorizontal: 30,
-    alignItems: "center",
-    backgroundColor: "#fff",
+
+
+const profileStyles = StyleSheet.create({
+  bgContainer: {
     flexGrow: 1,
+    backgroundColor: COLORS.background,
+    paddingVertical: 0,
+    alignItems: 'center',
+    paddingBottom: 30,
   },
-  avatar: {
-    marginBottom: 20,
+  headerRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    marginTop: Platform.OS === 'ios' ? 0 : 10,
+    paddingLeft: 10,
   },
-  name: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#003087",
-    marginBottom: 30,
+  backButton: {
+    marginLeft: 0,
+    marginBottom: 0,
+    padding: 4,
   },
-  infoContainer: {
-    alignSelf: "stretch",
-    marginBottom: 40,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333",
-    marginTop: 20,
-    textTransform: "capitalize",
-  },
-  info: {
-    fontSize: 16,
-    color: "#666",
-    marginTop: 5,
-    paddingLeft: 5,
-  },
-  logoutButton: {
-    backgroundColor: "#c62828",
-    paddingVertical: 15,
-    paddingHorizontal: 30,
-    borderRadius: 8,
+  cardContainer: {
+    backgroundColor: COLORS.card,
+    borderRadius: 24,
+    marginTop: 10,
+    marginHorizontal: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 32,
+    alignItems: 'center',
+    width: '92%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
     elevation: 3,
   },
-  logoutButtonText: {
-    color: "#fff",
+  avatar: {
+    marginBottom: 18,
+  },
+  name: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: COLORS.primary,
+    marginBottom: 18,
+    textAlign: 'center',
+  },
+  uidRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 18,
+    backgroundColor: '#F6F6F6',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  uidText: {
     fontSize: 16,
-    fontWeight: "bold",
+    color: COLORS.text,
+    marginRight: 8,
+    fontWeight: '600',
+  },
+  infoList: {
+    width: '100%',
+    marginBottom: 24,
+  },
+  infoCard: {
+    backgroundColor: '#F6F6F6',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    flexDirection: 'column',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  label: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: 2,
+    textTransform: 'capitalize',
+  },
+  info: {
+    fontSize: 15,
+    color: '#666',
+    marginTop: 1,
+    paddingLeft: 2,
+  },
+  logoutButton: {
+    backgroundColor: '#c62828',
+    paddingVertical: 15,
+    paddingHorizontal: 30,
+    borderRadius: 18,
+    elevation: 3,
+    marginTop: 10,
+    marginBottom: 0,
+    width: '100%',
+    alignItems: 'center',
+  },
+  logoutButtonText: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
   },
 });
 

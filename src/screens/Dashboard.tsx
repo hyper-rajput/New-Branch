@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { View, Text, StyleSheet, Alert, TouchableOpacity, FlatList, Dimensions, Platform } from "react-native";
+import { View, Text, StyleSheet, Alert, TouchableOpacity, FlatList, Dimensions, Platform, Image, BackHandler } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -8,17 +8,20 @@ import Voice from "@react-native-community/voice";
 import Tts from 'react-native-tts';
 import EncryptedStorage from 'react-native-encrypted-storage';
 import {initializeNotifications} from '../services/NotificationService';
-import {fetchAndStoreUserDetails} from '../services/api';
+import {fetchAndStoreUserDetails,generateTodoApi, getWeatherApi} from '../services/api';
+import { useFocusEffect } from '@react-navigation/native';
+import Geolocation from 'react-native-geolocation-service';
+const { PermissionsAndroid } = require('react-native');
 
 const Dashboard = ({ navigation, remoteMessage  }) => {
   const [lastFeedbackTime, setLastFeedbackTime] = useState(null);
   const [proactivePrompt, setProactivePrompt] = useState(null);
   const [isListening, setIsListening] = useState(false);
-  const [recognizedText, setRecognizedText] = useState("");
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
-    const [Name, setName] = useState("xxxxxxxxxxxxxxxxxxxx");
+  const [recognizedText, setRecognizedText] = useState("");
 
-  const VOICE_ASSISTANT_API_URL = "http://lumia-env.eba-smvczc8e.us-east-1.elasticbeanstalk.com/chat"; // EXAMPLE URL
+  const [Name, setName] = useState("Hey, Deepa!");  // Hardcoded for design match
+  const VOICE_ASSISTANT_API_URL = "http://lumia-env.eba-smvczc8e.us-east-1.elasticbeanstalk.com/proactive-talk"; // EXAMPLE URL
   
   useEffect(() => {
     fetchAndStoreUserDetails();
@@ -159,14 +162,43 @@ const Dashboard = ({ navigation, remoteMessage  }) => {
       Alert.alert("Unsupported", "Voice recognition is only supported on iOS and Android devices.");
       return;
     }
-    if(!isListening){
+
+    // Microphone permission check
+    let hasPermission = true;
+    if (Platform.OS === 'android') {
+      try {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+          {
+            title: "Microphone Permission",
+            message: "This app needs access to your microphone to recognize your speech.",
+            buttonNeutral: "Ask Me Later",
+            buttonNegative: "Cancel",
+            buttonPositive: "OK"
+          }
+        );
+        hasPermission = granted === PermissionsAndroid.RESULTS.GRANTED;
+      } catch (err) {
+        console.warn("Permission error:", err);
+        hasPermission = false;
+      }
+    } else if (Platform.OS === 'ios') {
+      // iOS: Voice.start will prompt for permission if not already granted
+      // Optionally, you can use react-native-permissions for a more robust check
+      hasPermission = true;
+    }
+
+    if (!hasPermission) {
+      Alert.alert("Permission Denied", "Microphone permission is required to use voice recognition.");
+      return;
+    }
+
+    if (!isListening) {
       try {
         // Always destroy before starting to ensure a clean slate.
-        // This is the key to preventing the "every second time" error.
         await Voice.destroy().catch(err => console.error("Error destroying Voice before new session:", err));
-        Voice.removeAllListeners(); // Ensure all old listeners are truly gone
+        Voice.removeAllListeners();
 
-        // Re-add listeners just before starting, to ensure they are fresh
         Voice.onSpeechStart = onSpeechStart;
         Voice.onSpeechEnd = onSpeechEnd;
         Voice.onSpeechResults = onSpeechResults;
@@ -185,7 +217,7 @@ const Dashboard = ({ navigation, remoteMessage  }) => {
         Tts.speak("I couldn't start listening. Please check your microphone permissions.");
       }
     }
-    };
+  };
 
     const stopListening = async () => {
       if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
@@ -220,7 +252,7 @@ const Dashboard = ({ navigation, remoteMessage  }) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: command,
+          reply: command,
           idToken:idToken
         }),
       });
@@ -284,21 +316,7 @@ const Dashboard = ({ navigation, remoteMessage  }) => {
     return () => clearInterval(interval);
   }, [lastFeedbackTime]);
 
-  useEffect(() => {
-    const prompts = [
-      { message: "Good morning! The weather today is sunny, 72°F. Would you like to go for a walk?", action: "suggestWalk" },
-      { message: "Would you like to listen to some music?", action: "suggestMusic" },
-      { message: "It’s been a while since you talked to someone. Want me to suggest a contact?", action: "suggestContact" },
-      { message: "You have new messages! Would you like to read them?", action: "suggestMessages" },
-    ];
 
-    const interval = setInterval(() => {
-      const randomPrompt = prompts[Math.floor(Math.random() * prompts.length)];
-      setProactivePrompt(randomPrompt);
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, []);
 
   const handlePromptResponse = (action, response) => {
     if (action === "suggestWalk") {
@@ -315,115 +333,245 @@ const Dashboard = ({ navigation, remoteMessage  }) => {
     setProactivePrompt(null);
   };
 
-  const reminders = [
-    { id: "1", title: "Take your medicine", subtitle: "9:00 A.M. Blood Pressure", icon: "local-pharmacy" },
-    { id: "2", title: "Morning walk", subtitle: "10:00 AM - 15 minutes", icon: "directions-walk" },
-    { id: "3", title: "TG5", subtitle: "11:00 AM - 60 minutes", icon: "tv" },
-  ];
+  const [reminders, setReminders] = useState([]);
 
-  const renderReminder = ({ item }) => (
-    <TouchableOpacity style={styles.reminderItem}>
-      <Icon name={item.icon} size={30} color="#00351D" style={styles.reminderIcon} />
-      <View style={styles.reminderTextContainer}>
-        <Text style={styles.reminderTitle}>{item.title}</Text>
-        <Text style={styles.reminderSubtitle}>{item.subtitle}</Text>
-      </View>
-    </TouchableOpacity>
+  useEffect(() => {
+    const fetchTodos = async () => {
+      try {
+        const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+        const storedTodosString = await AsyncStorage.getItem("todos");
+        const storedTodosDate = await AsyncStorage.getItem("todosDate");
+
+        let todosData = null;
+
+        if (storedTodosString && storedTodosDate === today) {
+          // Use cached todos
+          todosData = JSON.parse(storedTodosString);
+        } else {
+          // Fetch new todos and cache them
+          const response = await generateTodoApi();
+          todosData = response;
+          await AsyncStorage.setItem("todos", JSON.stringify(response));
+          await AsyncStorage.setItem("todosDate", today);
+        }
+
+        // Get current hour
+        const now = new Date();
+        const hour = now.getHours();
+
+        // Determine current period
+        let currentPeriod = "";
+        if (hour >= 5 && hour < 12) {
+          currentPeriod = "morning";
+        } else if (hour >= 12 && hour < 18) {
+          currentPeriod = "evening";
+        } else {
+          currentPeriod = "night";
+        }
+
+        // Only include current and future periods
+        const periodOrder = ["morning", "evening", "night"];
+        const currentIndex = periodOrder.indexOf(currentPeriod);
+        const periodsToShow = periodOrder.slice(currentIndex);
+
+        let allTodos = [];
+        periodsToShow.forEach(period => {
+          if (todosData[period]) {
+            todosData[period].forEach(todo => {
+              allTodos.push({
+                id: `${period}-${todo["to-do-list"]}-${todo.time}`,
+                title: todo["to-do-list"],
+                subtitle: `(${period.charAt(0).toUpperCase() + period.slice(1)})`,
+                icon: "check-circle",
+                period,
+              });
+            });
+          }
+        });
+
+        // Sort by period order, then by time
+        allTodos.sort((a, b) => {
+          const periodCmp = periodsToShow.indexOf(a.period) - periodsToShow.indexOf(b.period);
+          if (periodCmp !== 0) return periodCmp;
+          const t1 = a.subtitle.match(/\d{2}:\d{2}/)?.[0] || "";
+          const t2 = b.subtitle.match(/\d{2}:\d{2}/)?.[0] || "";
+          return t1.localeCompare(t2);
+        });
+
+        setReminders(allTodos);
+      } catch (e) {
+        console.error("Failed to fetch todos", e);
+        setReminders([]);
+      }
+    };
+    fetchTodos();
+  }, []);
+
+  // Add a title above the reminders list
+
+
+
+  
+  useEffect(() => {
+
+        onAppResume();
+    
+  }, []);
+
+  const onAppResume = async () => {
+    const now = Date.now();
+
+    const lastOpened = await AsyncStorage.getItem('last_opened');
+    const openCountRaw = await AsyncStorage.getItem('open_count');
+    const openCount = openCountRaw ? parseInt(openCountRaw, 10) : 0;
+
+    const hoursSinceLast = lastOpened ? (now - parseInt(lastOpened)) / (1000 * 60 * 60) : Infinity;
+    const currentHour = new Date().getHours();
+
+    let message: string | null = null;
+
+    // Inactivity trigger
+
+      message = ' ';
+      await sendVoiceCommandToBackend(message);
+    
+
+    await AsyncStorage.setItem('last_opened', now.toString());
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      // On focus: do nothing
+      return () => {
+        // On unfocus: stop voice and TTS
+        if (Platform.OS === 'ios' || Platform.OS === 'android') {
+          Voice.destroy().catch(err => console.error('Error destroying Voice on unfocus:', err));
+          Voice.removeAllListeners();
+          Tts.stop();
+        }
+      };
+    }, [])
   );
+
+  useEffect(() => {
+    const beforeRemoveListener = (e: any) => {
+      e.preventDefault();
+      BackHandler.exitApp(); // Close the app if user tries to go back
+    };
+    navigation.addListener('beforeRemove', beforeRemoveListener);
+    return () => navigation.removeListener('beforeRemove', beforeRemoveListener);
+  }, [navigation]);
+
+  useEffect(() => {
+    const getLocationAndSend = async () => {
+      let hasPermission = false;
+      if (Platform.OS === 'android') {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+          {
+            title: 'Location Permission',
+            message: 'This app needs access to your location to provide personalized services.',
+            buttonNeutral: 'Ask Me Later',
+            buttonNegative: 'Cancel',
+            buttonPositive: 'OK',
+          }
+        );
+        hasPermission = granted === PermissionsAndroid.RESULTS.GRANTED;
+      } else if (Platform.OS === 'ios') {
+        // iOS: Geolocation.requestAuthorization() can be used, but Geolocation.getCurrentPosition will prompt if not granted
+        hasPermission = true;
+      }
+      if (!hasPermission) {
+        Alert.alert('Permission Denied', 'Location permission is required for this feature.');
+        return;
+      }
+      Geolocation.getCurrentPosition(
+        async (position) => {
+          const { latitude, longitude } = position.coords;
+          try {
+
+            await getWeatherApi(latitude, longitude);
+          } catch (error) {
+            console.error('Error sending location to backend:', error);
+          }
+        },
+        (error) => {
+          console.error('Error getting location:', error);
+          Alert.alert('Location Error', 'Could not fetch your location.');
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+      );
+    };
+    getLocationAndSend();
+  }, []);
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header Section */}
-    <View style={styles.header}>
-  <TouchableOpacity onPress={() => navigation.navigate("ProfileScreen")}>
-    <Icon name="account-circle" size={35} color="#333" />
-  </TouchableOpacity>
-
-  <View style={{ width: 35 }} /> 
-
-  <TouchableOpacity
-    style={styles.headerButton}
-    onPress={() => navigation.navigate("Notifications")}
-  >
-    <View style={styles.notificationIcon}>
-      <Icon name="notifications" size={24} color="#333" />
-      <View style={styles.notificationBadge}>
-        <Text style={styles.notificationBadgeText}>1</Text>
+      {/* Top bar with logo and app name */}
+      <View style={styles.topBar}>
+        <View style={{flex: 1}} />
+        <View style={styles.logoRow}>
+          <Icon name="favorite" size={28} color="#F47C4B" style={{marginRight: 6}} />
+          <Text style={styles.appName}>CareMitra</Text>
+        </View>
       </View>
-    </View>
-  </TouchableOpacity>
-</View>
 
+      {/* Greeting */}
+      <Text style={styles.greeting}>{Name}</Text>
 
-      <Text style={styles.cardNumber}>{Name}</Text>
-
-      {proactivePrompt && (
-        <View style={styles.promptContainer}>
-          <Text style={styles.promptText}>{proactivePrompt.message}</Text>
-          <View style={styles.promptButtons}>
-            <TouchableOpacity
-              style={styles.promptButton}
-              onPress={() => handlePromptResponse(proactivePrompt.action, "yes")}
-            >
-              <Text style={styles.promptButtonText}>Yes</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.promptButton}
-              onPress={() => handlePromptResponse(proactivePrompt.action, "no")}
-            >
-              <Text style={styles.promptButtonText}>No</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-{recognizedText ? (
-        <View style={styles.recognizedTextContainer}>
-          <Text style={styles.recognizedText}>You said: "{recognizedText}"</Text>
-        </View>
-      ) : null}
-
-      {/* Microphone and Surrounding Icons Section */}
-      <View style={styles.iconContainer}>
-        {/* Microphone Button */}
-        <TouchableOpacity
-          style={[styles.microphoneButton, isListening ? { borderColor: "red" } : {}]}
-          onPress={startListening}
-          disabled={isProcessingVoice || (Platform.OS !== 'ios' && Platform.OS !== 'android')}
-        >
-          {isProcessingVoice ? (
-            <ActivityIndicator size="large" color="#000" />
-          ) : (
-            <Icon name="mic" size={50} color={isListening ? 'red' : "#000"} />
-          )}
+      {/* Main cards grid */}
+      <View style={styles.cardGrid}>
+        <TouchableOpacity style={[styles.card, styles.profileCard]} onPress={() => navigation.navigate("ProfileScreen")}> 
+          <Icon name="person" size={48} color="#4B5E7A" />
+          <Text style={styles.cardText}>Profile</Text>
         </TouchableOpacity>
-
-        <View style={styles.buttonRow}>
-          <TouchableOpacity
-            style={[styles.smallButton, styles.familyButton]}
-            onPress={() => navigation.navigate("FamilyMemberScreen")}
-          >
-            <Icon name="group" size={45} color="#000" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.smallButton, styles.healthButton]}
-            onPress={() => navigation.navigate("HealthTrackingScreen")}
-          >
-            <Icon name="health-and-safety" size={45} color="#000" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.smallButton, styles.messageButton]}
-            onPress={() => navigation.navigate("MessagesScreen")}
-          >
-            <Icon name="chat" size={45} color="#000" />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={[styles.card, styles.medicationCard]} onPress={() => navigation.navigate("MedicationReminder")}> 
+          <Icon name="medication" size={48} color="#2B6E53" />
+          <Text style={styles.cardText}>Medication Reminders</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.card, styles.familyCard]} onPress={() => navigation.navigate("FamilyMemberScreen")}> 
+          <Icon name="diversity-3" size={48} color="#2B4B3A" />
+          <Text style={styles.cardText}>Family</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.card, styles.healthCard]} onPress={() => navigation.navigate("HealthTrackingScreen")}> 
+          <Icon name="favorite" size={48} color="#3A5E8C" />
+          <Text style={styles.cardText}>Health Tracking</Text>
+        </TouchableOpacity>
       </View>
 
+      {/* Large Centered Microphone Button */}
+      <View style={styles.centerMicRow}>
+        <TouchableOpacity style={styles.centerMicButton} onPress={startListening} disabled={isProcessingVoice}>
+          <Icon name="mic" size={48} color="#fff" />
+        </TouchableOpacity>
+      </View>
+
+      {/* To-Do List heading */}
+      <View style={styles.todoHeaderRow}>
+        <Text style={styles.todoHeader}>To-Do List</Text>
+      </View>
+
+      {/* To-Do List cards */}
       <FlatList
-        data={reminders}
-        renderItem={renderReminder}
+        data={reminders.length > 0 ? reminders : [
+          { id: '1', title: 'Physiotherapy exercises', subtitle: '9:00 am', icon: 'notifications' },
+          { id: '2', title: 'Amlodipine 5 mg', subtitle: '12:00 pm', icon: 'medication' },
+          { id: '3', title: 'Call with Anjali', subtitle: '2:00 pm', icon: 'call' },
+        ]}
+        renderItem={({ item }) => (
+          <View style={styles.todoCard}>
+            <View style={[styles.todoIconCircle, {backgroundColor: getTodoIconBg(item.icon)}]}>
+              <Icon name={item.icon} size={24} color="#fff" />
+            </View>
+            <View style={{flex: 1}}>
+              <Text style={styles.todoTitle}>{item.title}</Text>
+              <Text style={styles.todoTime}>{item.subtitle}</Text>
+            </View>
+          </View>
+        )}
         keyExtractor={(item) => item.id}
         style={styles.reminderList}
+        contentContainerStyle={{paddingBottom: 30}}
       />
     </SafeAreaView>
   );
@@ -434,178 +582,159 @@ const { width } = Dimensions.get("window");
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FFF",
-    paddingHorizontal: 20,
-    paddingVertical: 30,
+    backgroundColor: '#FFF7E3', // soft yellow
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 20,
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingTop: 24,
+    paddingRight: 24,
+    marginBottom: 8,
   },
-  headerButton: {
-    backgroundColor: "#FFF",
-    width: 50,
-    height: 50,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    elevation: 5,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    borderWidth: 6,
-    borderColor: "#E6F0FA",
-  },
-  notificationIcon: {
-    position: "relative",
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  notificationBadge: {
-    position: "absolute",
-    top: -5,
-    right: -5,
-    backgroundColor: "red",
-    borderRadius: 10,
-    width: 20,
-    height: 20,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  notificationBadgeText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "bold",
-  },
-  cardNumber: {
-    fontSize: 18,
-    color: "#333",
-    textAlign: "center",
-    marginBottom: 30,
-    letterSpacing: 2,
-  },
-  promptContainer: {
-    backgroundColor: "#F8F9FA",
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 20,
-    elevation: 5,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  promptText: {
-    fontSize: 16,
-    color: "#333",
-    marginBottom: 10,
-    textAlign: "center",
-  },
-  promptButtons: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-  },
-  promptButton: {
-    backgroundColor: "#003087",
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 5,
-  },
-  promptButtonText: {
-    color: "#FFF",
-    fontSize: 14,
-    fontWeight: "bold",
-  },
-  iconContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 40,
-    position: "relative",
-    width: "100%",
-    height: 220,
-  },
-  microphoneButton: {
-    backgroundColor: "#FFF",
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    alignItems: "center",
-    justifyContent: "center",
-    elevation: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    borderWidth: 8,
-    borderColor: "#E6F0FA",
-    marginBottom: 20,
-  },
-  buttonRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    width: "100%",
-  },
-  smallButton: {
-    backgroundColor: "#FFF",
-    height: 80,
-    borderRadius: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    elevation: 5,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    borderWidth: 7,
-    borderColor: "#E6F0FA",
-    width: width * 0.333 - 20,
-  },
-  reminderList: {
-    flex: 1,
-  },
-  reminderItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 25,
-    paddingHorizontal: 30,
-    borderRadius: 10,
-    backgroundColor: "#E6F0FA",
-    marginVertical: 5,
-  },
-  reminderIcon: {
-    marginRight: 15,
-  },
-  reminderTextContainer: {
-    flex: 1,
-  },
-  reminderTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#333",
-    textTransform: "uppercase",
-  },
-  reminderSubtitle: {
-    fontSize: 14,
-    color: "#666",
-    marginTop: 5,
-  },
-    recognizedTextContainer: {
-    backgroundColor: "#e0ffe0",
-    padding: 10,
-    borderRadius: 5,
-    marginBottom: 15,
+  logoRow: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  recognizedText: {
-    fontSize: 16,
-    color: "#006400",
-    fontStyle: 'italic',
+  appName: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#2B2B2B',
+    letterSpacing: 0.5,
+  },
+  greeting: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#2B2B2B',
+    marginLeft: 24,
+    marginBottom: 18,
+    marginTop: 0,
+  },
+  cardGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginHorizontal: 0,
+    marginBottom: 18,
+  },
+  card: {
+    width: 150,
+    height: 120,
+    borderRadius: 18,
+    margin: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E3EAF6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  profileCard: {
+    backgroundColor: '#D6E6F2',
+  },
+  medicationCard: {
+    backgroundColor: '#D6F2E6',
+  },
+  familyCard: {
+    backgroundColor: '#E6F2D6',
+  },
+  healthCard: {
+    backgroundColor: '#D6E6F2',
+  },
+  cardText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2B2B2B',
+    marginTop: 10,
+    textAlign: 'center',
+  },
+  centerMicRow: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 8,
+  },
+  centerMicButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#2B2B2B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+  },
+  todoHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 8,
+    marginLeft: 24,
+    marginRight: 24,
+  },
+  todoHeader: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#2B2B2B',
+    flex: 1,
+  },
+  reminderList: {
+    paddingHorizontal: 0,
+    marginTop: 0,
+  },
+  todoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    marginHorizontal: 24,
+    marginVertical: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  todoIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  todoTitle: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: '#2B2B2B',
+  },
+  todoTime: {
+    fontSize: 15,
+    color: '#6B6B6B',
+    marginTop: 2,
   },
 });
+
+// Helper for icon background color
+function getTodoIconBg(icon: string) {
+  switch (icon) {
+    case 'notifications':
+      return '#FECF6A';
+    case 'medication':
+      return '#7AC7C4';
+    case 'call':
+      return '#7AC77A';
+    default:
+      return '#B0B0B0';
+  }
+}
 
 export default Dashboard;
