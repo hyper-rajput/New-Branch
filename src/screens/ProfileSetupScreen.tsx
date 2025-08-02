@@ -5,21 +5,25 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  Modal,
-  Keyboard,
-  TouchableWithoutFeedback,
   Alert,
+  Keyboard,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import MaterialIcons from "react-native-vector-icons/MaterialIcons";
 import { saveUserDetails } from "../services/api";
 
-const CustomDropdown = ({ label, value, options, onSelect, multiSelect = false }) => {
+type CustomDropdownProps = {
+  label: string;
+  value: string | string[];
+  options: string[];
+  onSelect: (val: any) => void;
+  multiSelect?: boolean;
+};
+
+const CustomDropdown: React.FC<CustomDropdownProps> = ({ label, value, options, onSelect, multiSelect = false }) => {
   const [visible, setVisible] = useState(false);
+
+  const isSelected = (option: string) => multiSelect && Array.isArray(value) && value.includes(option);
 
   return (
     <>
@@ -30,413 +34,579 @@ const CustomDropdown = ({ label, value, options, onSelect, multiSelect = false }
           setVisible(true);
         }}
       >
-        <Text style={styles.dropdownText}>
-          {multiSelect && Array.isArray(value) && value.length > 0
-            ? value.join(", ")
-            : value || label}
-        </Text>
-        <MaterialIcons name="arrow-drop-down" size={28} color="#2E2E2E" />
-      </TouchableOpacity>
-
-      <Modal transparent visible={visible} animationType="fade">
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          onPress={() => setVisible(false)}
-          activeOpacity={1}
-        >
-          <View style={styles.modalContent}>
+        <Text>{label}</Text>
+        {/* Add dropdown content here based on visibility state */}
+        {visible && (
+          <View>
             {options.map((option) => (
               <TouchableOpacity
                 key={option}
-                style={[
-                  styles.modalItem,
-                  multiSelect && value.includes(option) && styles.selectedItem,
-                ]}
                 onPress={() => {
-                  if (multiSelect) {
-                    onSelect(
-                      value.includes(option)
-                        ? value.filter((item) => item !== option)
-                        : [...value, option]
-                    );
-                  } else {
-                    onSelect(option);
-                    setVisible(false);
-                  }
+                  onSelect(option);
+                  setVisible(false);
                 }}
               >
-                <Text style={styles.modalItemText}>{option}</Text>
+                <Text>{option}</Text>
               </TouchableOpacity>
             ))}
-            {multiSelect && (
-              <TouchableOpacity
-                style={styles.modalDoneButton}
-                onPress={() => setVisible(false)}
-              >
-                <Text style={styles.modalDoneText}>Done</Text>
-              </TouchableOpacity>
-            )}
           </View>
-        </TouchableOpacity>
-      </Modal>
+        )}
+      </TouchableOpacity>
     </>
   );
 };
 
-const ProfileSetupScreen = ({ navigation }) => {
-  const [name, setName] = useState("");
-  const [dob, setDob] = useState("");
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [tempDate, setTempDate] = useState(new Date(2000, 0, 1));
-  const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
-  const [height, setHeight] = useState("");
-  const [weight, setWeight] = useState("");
-  const [bloodGroup, setBloodGroup] = useState("");
-  const [hobby, setHobby] = useState("");
-  const [customHobby, setCustomHobby] = useState("");
-  const [emergencyContact, setEmergencyContact] = useState("");
-  const [medicalHistory, setMedicalHistory] = useState([]);
-  const [customMedicalHistory, setCustomMedicalHistory] = useState("");
+const steps = [
+  {
+    key: 'age',
+    label: 'My age is...',
+    required: true,
+    options: [
+      '< 40 years old',
+      '40-49',
+      '50-59',
+      '60-69',
+      '70-79',
+      '80-89',
+      '> 90 years old',
+    ],
+  },
+  {
+    key: 'name',
+    label: 'My name is...',
+    required: true,
+    input: true,
+    placeholder: 'Enter your name',
+  },
+  {
+    key: 'phone',
+    label: 'My phone number is...',
+    required: true,
+    input: true,
+    placeholder: 'Enter your 10-digit phone number',
+    keyboardType: 'phone-pad',
+    phoneValidation: true,
+  },
+  {
+    key: 'bloodGroup',
+    label: 'My blood group is...',
+    required: true,
+    options: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'],
+  },
+  {
+    key: 'height',
+    label: 'My height is...',
+    required: true,
+    heightUnit: true,
+  },
+  {
+    key: 'weight',
+    label: 'My weight is...',
+    required: true,
+    input: true,
+    placeholder: 'Enter your weight',
+    keyboardType: 'numeric',
+    showUnit: 'kg',
+  },
+  {
+    key: 'foodPreference',
+    label: 'My food preference is...',
+    required: true,
+    options: [
+      'Vegetarian',
+      'Non-Vegetarian',
+      'Eggitarian',
+      'Vegan',
+      'Jain',
+      'Sattvic',
+      'Pescatarian',
+      'Lacto-Vegetarian',
+      'Ovo-Vegetarian',
+      'Other',
+    ],
+  },
+  {
+    key: 'interests',
+    label: 'My interests are...',
+    required: false,
+    multiSelect: true,
+    options: ['Music', 'Reading', 'Travel', 'Sports', 'Gardening', 'Cooking', 'Other'],
+    showOtherInput: true,
+  },
+  {
+    key: 'allergy',
+    label: 'I have allergies to...',
+    required: false,
+    multiSelect: true,
+    options: ['None', 'Pollen', 'Dust', 'Food', 'Medicine', 'Latex', 'Insect bites', 'Pet dander', 'Mold', 'Other'],
+    showOtherInput: true,
+  },
+  {
+    key: 'medicalCondition',
+    label: 'I have these medical conditions...',
+    required: false,
+    multiSelect: true,
+    options: ['Diabetes', 'Hypertension', 'Heart Disease', 'Asthma', 'Arthritis', 'Thyroid', 'None', 'Other'],
+    showOtherInput: true,
+  },
+  {
+    key: 'medHistDuration',
+    label: 'How long have you had your main condition?',
+    required: false,
+    input: true,
+    placeholder: 'e.g. 5 years',
+  },
+  {
+    key: 'medHistMedication',
+    label: 'Are you on regular medication?',
+    required: false,
+    options: ['Yes', 'No'],
+  },
+  {
+    key: 'medHistHospital',
+    label: 'Any recent hospitalizations?',
+    required: false,
+    options: ['Yes', 'No'],
+  },
+];
 
-  const hobbyOptions = ["Walking", "Reading", "Gardening", "Knitting", "Puzzles", "Other"];
-  const bloodGroupOptions = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
-  const medicalHistoryOptions = [
-    "Diabetes",
-    "High Blood Pressure",
-    "Arthritis",
-    "Heart Disease",
-    "Asthma",
-    "None",
-    "Other",
-  ];
+// Rest of your ProfileSetupScreen component remains the same
 
-  const handleSubmit = async () => {
-    if (!name || !dob) {
-      Alert.alert("Oops!", "Please enter all required fields (Name and DOB).");
-      return;
-    }
+const ProfileSetupScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
+  // Height step state
+  const [heightUnit, setHeightUnit] = useState<'cm' | 'ft'>('cm');
+  const [heightCm, setHeightCm] = useState('');
+  const [heightFt, setHeightFt] = useState('');
+  const [heightIn, setHeightIn] = useState('');
+  const [step, setStep] = useState(0);
+  const [form, setForm] = useState<{ [key: string]: string | string[] }>({});
+  const [saving, setSaving] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
 
-    const profile = {
-      name,
-      dob,
-      phone,
-      address,
-      height,
-      weight,
-      bloodGroup,
-      hobby: hobby === "Other" ? customHobby : hobby,
-      emergencyContact: emergencyContact || "None",
-      medicalHistory:
-        medicalHistory.length > 0
-          ? medicalHistory.join(", ") + (customMedicalHistory ? ` - ${customMedicalHistory}` : "")
-          : "None",
-    };
+  const current = steps[step];
+  const isLast = step === steps.length - 1;
+  const isFirst = step === 0;
+  const value = form[current.key] ?? (current.multiSelect ? [] : '');
 
-    try {
-      await saveUserDetails(profile);
-      Alert.alert("Success!", "Your profile has been saved!", [
-        {
-          text: "OK",
-          onPress: () => navigation.replace("Dashboard"),
-        },
-      ]);
-    } catch (error) {
-      Alert.alert("Error", error.message || "Could not save profile.");
+  const canGoNext = current.required
+    ? (Array.isArray(value) ? value.length > 0 : !!(value && (value as string).trim()))
+    : true;
+
+  const handleNext = async () => {
+    if (!canGoNext) return;
+    if (isLast) {
+      setSaving(true);
+      try {
+        await saveUserDetails(form);
+        Alert.alert('Success', 'Your profile has been saved!', [
+          { text: 'OK', onPress: () => navigation.replace('Dashboard') },
+        ]);
+      } catch (e: any) {
+        Alert.alert('Error', e?.message || 'Could not save profile.');
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      setStep((s) => s + 1);
     }
   };
 
-  const onDateChange = (event, selectedDate) => {
-    setShowDatePicker(false);
-    if (selectedDate) {
-      const formatted = selectedDate.toLocaleDateString("en-US");
-      setDob(formatted);
-      setTempDate(selectedDate);
-    }
+  const handleBack = () => {
+    if (!isFirst) setStep((s) => s - 1);
+    else navigation.goBack();
+  };
+
+  const handleSelect = (option: string | string[]) => {
+    setForm((f) => ({ ...f, [current.key]: option }));
+  };
+
+  const handleInput = (text: string) => {
+    setForm((f) => ({ ...f, [current.key]: text }));
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={{ flex: 1 }}
-        >
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View style={styles.header}>
-              <Text style={styles.headerTitle}>✨ Tell Us About You ✨</Text>
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Your Information</Text>
-
-              <TextInput
-                style={styles.customInput}
-                placeholder="Full Name"
-                value={name}
-                onChangeText={setName}
-                placeholderTextColor="#666"
-              />
-
+      <View style={styles.headerRow}>
+        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+          <MaterialIcons name="arrow-back" size={28} color="#f6f4e9" />
+        </TouchableOpacity>
+        <Text style={styles.welcome}>Welcome to Lumia</Text>
+        <TouchableOpacity style={styles.skipButton} onPress={() => navigation.replace('Dashboard')}>
+          <Text style={styles.skipButtonText}>Skip</Text>
+        </TouchableOpacity>
+      </View>
+  
+      <View style={styles.stepperContainer}>
+        {steps.map((s, idx) => (
+          <React.Fragment key={s.key}>
+            <View style={[styles.stepCircle, idx <= step && styles.stepCircleActive]} />
+            {idx < steps.length - 1 && <View style={styles.stepLine} />}
+          </React.Fragment>
+        ))}
+      </View>
+      <Text style={styles.title}>{current.label}</Text>
+      {/* Input rendering logic */}
+      {current.input && !current.heightUnit ? (
+        <View style={styles.inputWrapper}>
+          <TextInput
+            style={styles.input}
+            placeholder={current.placeholder}
+            value={typeof value === 'string' ? value : ''}
+            onChangeText={text => {
+              // Phone validation
+              if (current.phoneValidation) {
+                if (!/^\d{0,10}$/.test(text)) return;
+              }
+              // Weight validation
+              if (current.key === 'weight' && !/^\d{0,3}$/.test(text)) return;
+              handleInput(text);
+            }}
+            keyboardType={current.keyboardType as any || 'default'}
+            autoFocus
+            placeholderTextColor="#b2d8df"
+            multiline={!!(current as any).multiline}
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
+          />
+          {/* Show unit for weight */}
+          {current.showUnit && (
+            <Text style={styles.unitLabel}>{current.showUnit}</Text>
+          )}
+        </View>
+      ) : current.heightUnit ? (
+        <>
+          <View style={styles.inputWrapper}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'center' }}>
               <TouchableOpacity
-                onPress={() => {
-                  Keyboard.dismiss();
-                  setShowDatePicker(true);
-                }}
-                style={styles.inputContainer}
+                style={[styles.unitSwitch, heightUnit === 'cm' && styles.unitSwitchActive]}
+                onPress={() => setHeightUnit('cm')}
               >
-                <MaterialIcons
-                  name="calendar-today"
-                  size={28}
-                  color="#D32F2F"
-                  style={styles.inputIcon}
-                />
-                <Text style={[styles.input, { paddingVertical: 12, color: dob ? "#2E2E2E" : "#999" }]}>
-                  {dob || "Select Date of Birth"}
-                </Text>
+                <Text style={styles.unitSwitchText}>cm</Text>
               </TouchableOpacity>
-
-              {showDatePicker && (
-                <DateTimePicker
-                  value={tempDate}
-                  mode="date"
-                  display="default"
-                  maximumDate={new Date()}
-                  onChange={onDateChange}
-                />
-              )}
-
-              <TextInput
-                style={styles.customInput}
-                placeholder="Phone Number"
-                value={phone}
-                onChangeText={setPhone}
-                keyboardType="phone-pad"
-                placeholderTextColor="#666"
-              />
-
-              <TextInput
-                style={[styles.customInput, styles.multiLineInput]}
-                placeholder="Enter your full address here"
-                value={address}
-                onChangeText={setAddress}
-                placeholderTextColor="#666"
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-              />
-
-              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <TextInput
-                  style={[styles.customInput, { flex: 1, marginRight: 8 }]}
-                  placeholder="Height (cm)"
-                  value={height}
-                  onChangeText={setHeight}
-                  keyboardType="numeric"
-                  placeholderTextColor="#666"
-                />
-                <TextInput
-                  style={[styles.customInput, { flex: 1, marginLeft: 8 }]}
-                  placeholder="Weight (kg)"
-                  value={weight}
-                  onChangeText={setWeight}
-                  keyboardType="numeric"
-                  placeholderTextColor="#666"
-                />
-              </View>
-
-              <CustomDropdown
-                label="Blood Group"
-                value={bloodGroup}
-                options={bloodGroupOptions}
-                onSelect={setBloodGroup}
-              />
-
-              <TextInput
-                style={styles.customInput}
-                placeholder="Emergency Contact (Optional)"
-                value={emergencyContact}
-                onChangeText={setEmergencyContact}
-                keyboardType="phone-pad"
-                placeholderTextColor="#666"
-              />
+              <TouchableOpacity
+                style={[styles.unitSwitch, heightUnit === 'ft' && styles.unitSwitchActive]}
+                onPress={() => setHeightUnit('ft')}
+              >
+                <Text style={styles.unitSwitchText}>ft/in</Text>
+              </TouchableOpacity>
             </View>
-
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Your Interests</Text>
-              <CustomDropdown
-                label="Favorite Hobby (Optional)"
-                value={hobby}
-                options={hobbyOptions}
-                onSelect={setHobby}
-              />
-              {hobby === "Other" && (
-                <TextInput
-                  style={styles.customInput}
-                  placeholder="Please enter your hobby"
-                  value={customHobby}
-                  onChangeText={setCustomHobby}
-                  placeholderTextColor="#666"
-                />
-              )}
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Medical History</Text>
-              <CustomDropdown
-                label="Select Conditions"
-                value={medicalHistory}
-                options={medicalHistoryOptions}
-                onSelect={setMedicalHistory}
-                multiSelect={true}
-              />
+          </View>
+          {heightUnit === 'cm' ? (
+            <View style={styles.inputWrapper}>
               <TextInput
-                style={[styles.customInput, styles.multiLineInput]}
-                placeholder="Describe your experience or specific condition (optional)"
-                value={customMedicalHistory}
-                onChangeText={setCustomMedicalHistory}
-                placeholderTextColor="#666"
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
+                style={styles.input}
+                placeholder="Enter height"
+                value={heightCm}
+                onChangeText={text => {
+                  if (!/^\d{0,3}$/.test(text)) return;
+                  setHeightCm(text);
+                  handleInput(text ? text + 'cm' : '');
+                }}
+                keyboardType="numeric"
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => setInputFocused(false)}
+                placeholderTextColor="#b2d8df"
               />
+              <Text style={styles.unitLabel}>cm</Text>
             </View>
-
-            <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-              <Text style={styles.submitButtonText}>Save My Profile</Text>
+          ) : (
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                
+                value={heightFt}
+                onChangeText={text => {
+                  if (!/^\d{0,2}$/.test(text)) return;
+                  setHeightFt(text);
+                  handleInput(text && heightIn ? `${text}ft ${heightIn}in` : text ? `${text}ft` : heightIn ? `${heightIn}in` : '');
+                }}
+                keyboardType="numeric"
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => setInputFocused(false)}
+                placeholderTextColor="#b2d8df"
+              />
+              <Text style={styles.unitLabel}>feet</Text>
+              <TextInput
+                style={[styles.input, { marginLeft: 8 }]}
+                
+                value={heightIn}
+                onChangeText={text => {
+                  if (!/^\d{0,2}$/.test(text)) return;
+                  setHeightIn(text);
+                  handleInput(heightFt && text ? `${heightFt}ft ${text}in` : heightFt ? `${heightFt}ft` : text ? `${text}in` : '');
+                }}
+                keyboardType="numeric"
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => setInputFocused(false)}
+                placeholderTextColor="#b2d8df"
+              />
+              <Text style={styles.unitLabel}>inches</Text>
+            </View>
+          )}
+        </>
+      ) : current.multiSelect ? (
+        <View style={styles.optionsWrapper}>
+          {current.options?.map((option) => (
+            <TouchableOpacity
+              key={option}
+              style={[styles.optionButton, Array.isArray(value) && value.includes(option) && styles.optionButtonActive]}
+              onPress={() => {
+                let arr = Array.isArray(value) ? [...value] : [];
+                if (arr.includes(option)) {
+                  arr = arr.filter((v) => v !== option);
+                } else {
+                  arr.push(option);
+                }
+                handleSelect(arr);
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.optionText, Array.isArray(value) && value.includes(option) && styles.optionTextActive]}>{option}</Text>
             </TouchableOpacity>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </TouchableWithoutFeedback>
+          ))}
+          {/* Show text input for 'Other' if selected and showOtherInput is true */}
+          {current.showOtherInput && Array.isArray(value) && value.includes('Other') && (
+            <TextInput
+              style={styles.input}
+              placeholder={`Please specify your ${current.key}`}
+              value={form[`${current.key}Other`] as string || ''}
+              onChangeText={text => setForm(f => ({ ...f, [`${current.key}Other`]: text }))}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
+              placeholderTextColor="#b2d8df"
+            />
+          )}
+        </View>
+      ) : (
+        <View style={styles.optionsWrapper}>
+          {current.options?.map((option) => (
+            <TouchableOpacity
+              key={option}
+              style={[styles.optionButton, value === option && styles.optionButtonActive]}
+              onPress={() => handleSelect(option)}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.optionText, value === option && styles.optionTextActive]}>{option}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+      <View style={styles.bottomNav}>
+        <TouchableOpacity
+          style={[styles.nextButton, !canGoNext && styles.nextButtonDisabled]}
+          onPress={handleNext}
+          disabled={!canGoNext || saving}
+        >
+          <Text style={styles.nextButtonText}>{isLast ? 'Finish' : 'Next'}</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  // ...existing code...
+  // ...existing code...
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+    marginTop: 0,
+    position: 'relative',
+    minHeight: 40,
+  },
+  welcome: {
+    color: '#f6f4e9',
+    fontSize: 24,
+    fontWeight: '700',
+    textAlign: 'center',
+    flex: 1,
+    marginLeft: -28,
+    letterSpacing: 0.5,
+  },
   container: {
     flex: 1,
-    backgroundColor: "#FFF8E1",
+    backgroundColor: '#003512',
+    paddingTop: 24,
   },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
+  stepperContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+    marginTop: 16,
   },
-  header: {
-    alignItems: "center",
-    marginBottom: 20,
-    padding: 12,
-    borderRadius: 16,
-    backgroundColor: "#FFE082",
-    borderWidth: 1,
-    borderColor: "#FFB300",
+  stepCircle: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#b2d8df',
+    marginHorizontal: 4,
+    zIndex: 2,
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#2E2E2E",
+  stepCircleActive: {
+    backgroundColor: 'white',
+    borderColor: '#003512',
+    borderWidth: 2,
   },
-  section: {
-    backgroundColor: "#FFF",
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
-    elevation: 2,
+  stepLine: {
+    height: 2,
+    backgroundColor: '#b2d8df',
+    flex: 1,
+    alignSelf: 'center',
+    marginHorizontal: -2,
+    zIndex: 1,
   },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: "600",
-    marginBottom: 12,
-    color: "#2E2E2E",
-  },
-  customInput: {
-    borderWidth: 1,
-    borderColor: "#DDD",
-    borderRadius: 8,
-    padding: 16,
-    fontSize: 18,
-    marginBottom: 14,
-    color: "#2E2E2E",
-  },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#DDD",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    marginBottom: 14,
-  },
-  inputIcon: {
-    marginRight: 8,
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginVertical: 12,
+    marginHorizontal: 24,
+    borderWidth: 1.5,
+    borderColor: '#b2d8df',
   },
   input: {
-    fontSize: 18,
     flex: 1,
-  },
-  multiLineInput: {
-    height: 100,
+    color: '#f6f4e9',
+    fontSize: 20,
     paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: 'transparent',
+    borderRadius: 8,
+    borderWidth: 0,
+    minHeight: 48,
+    fontWeight: '400',
+  },
+  unitLabel: {
+    color: '#b2d8df',
+    fontSize: 18,
+    marginLeft: 8,
+    marginRight: 8,
+    fontWeight: '500',
+  },
+  unitSwitch: {
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderRadius: 18,
+    backgroundColor: '#00e95c',
+    marginHorizontal: 6,
+    borderWidth: 1.5,
+    borderColor: '#00e95c',
+  },
+  unitSwitchActive: {
+    backgroundColor: 'white',
+    borderColor: '#003512',
+  },
+  unitSwitchText: {
+    color: '#262626',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  unitSwitchTextActive: {
+    color: '#003512',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  backButton: {
+    marginRight: 8,
+    backgroundColor: 'transparent',
+    padding: 4,
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    zIndex: 2,
+  },
+  nextButton: {
+    backgroundColor: '#d2fa52',
+    borderRadius: 28,
+    paddingVertical: 20,
+    paddingHorizontal: 100,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  nextButtonDisabled: {
+    backgroundColor: 'white',
+  },
+  nextButtonText: {
+    color: '#003512',
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
   dropdown: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    borderWidth: 1,
-    borderColor: "#DDD",
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 14,
-  },
-  dropdownText: {
-    fontSize: 18,
-    color: "#2E2E2E",
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.3)",
-    justifyContent: "center",
-    padding: 30,
-  },
-  modalContent: {
-    backgroundColor: "#FFF",
+    padding: 12,
+    borderWidth: 1.5,
+    borderColor: '#b2d8df',
     borderRadius: 10,
-    padding: 20,
+    backgroundColor: 'transparent',
+    color: '#f6f4e9',
+    fontSize: 18,
   },
-  modalItem: {
+  optionsWrapper: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginVertical: 16,
+    marginHorizontal: 12,
+  },
+  optionButton: {
+    backgroundColor: '#00e95c',
+    borderRadius: 23,
     paddingVertical: 12,
+    paddingHorizontal: 28,
+    margin: 8,
+    borderWidth: 1.5,
+    borderColor: '#00e95c',
+    minWidth: 120,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  modalItemText: {
-    fontSize: 18,
-    color: "#2E2E2E",
+  optionButtonActive: {
+    backgroundColor: 'white',
+    borderColor: '#003512',
+    color: 'black',
   },
-  selectedItem: {
-    backgroundColor: "#FFE082",
-  },
-  modalDoneButton: {
-    marginTop: 10,
-    padding: 10,
-    backgroundColor: "#FF7043",
-    borderRadius: 8,
-    alignItems: "center",
-  },
-  modalDoneText: {
-    color: "#FFF",
-    fontSize: 18,
-    fontWeight: "600",
-  },
-  submitButton: {
-    backgroundColor: "#FF7043",
-    padding: 18,
-    borderRadius: 14,
-    alignItems: "center",
-    marginTop: 10,
-  },
-  submitButtonText: {
-    color: "#FFF",
+  optionText: {
+    color: '#262626',
     fontSize: 20,
-    fontWeight: "700",
+    fontWeight: '500',
+  },
+  optionTextActive: {
+    color: 'black',
+    fontWeight: '700',
+  },
+  title: {
+    color: '#f6f4e9',
+    fontSize: 28,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginVertical: 18,
+    marginHorizontal: 16,
+    letterSpacing: 0.5,
+  },
+  bottomNav: {
+    marginTop: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 32,
+  },
+  skipButton: {
+    position: 'absolute',
+    right: 10,
+    top: 0,
+    padding: 10,
+    zIndex: 2,
+  },
+  skipButtonText: {
+    color: '#d2fa52',
+    fontSize: 18,
+    fontWeight: '700',
   },
 });
 

@@ -37,7 +37,7 @@ const requestUserPermissionAndGetToken = async () => {
       console.log('Notification permission granted.');
       const token = await messaging().getToken();
       console.log('Sending push token to backend...');
-      await fetch('http://192.168.29.121:8000/save-push-token', {
+      await fetch('http://lumia-env.eba-smvczc8e.us-east-1.elasticbeanstalk.com/save-push-token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -102,6 +102,7 @@ export const initializeNotifications = () => {
       Alert.alert(
         `Data: ${JSON.stringify(remoteMessage.data)}`
       );
+      navigation.navigate('Dashboard',remoteMessage.notification.body);
       // Example navigation:
       // import { navigate } from './RootNavigation'; // If you have a global navigation service
       // if (remoteMessage.data?.screen) {

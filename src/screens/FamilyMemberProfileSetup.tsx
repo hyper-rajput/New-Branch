@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -10,6 +10,26 @@ const FamilyMemberProfileSetup: React.FC = () => {
   const [email, setEmail] = useState<string>('');
   const [relation, setRelation] = useState<string>('');
   const [address, setAddress] = useState<string>('');
+
+  useEffect(() => {
+    const beforeRemoveListener = (e: any) => {
+      e.preventDefault();
+      Alert.alert(
+        'Are you sure?',
+        'Are you sure you want to leave this page?',
+        [
+          { text: 'Stay', style: 'cancel', onPress: () => {} },
+          {
+            text: 'Leave',
+            style: 'destructive',
+            onPress: () => navigation.replace('FamilyDashboard'),
+          },
+        ]
+      );
+    };
+    navigation.addListener('beforeRemove', beforeRemoveListener);
+    return () => navigation.removeListener('beforeRemove', beforeRemoveListener);
+  }, [navigation]);
 
   const handleSave = async () => {
     if (!name || !email || !relation || !address) {

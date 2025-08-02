@@ -146,7 +146,7 @@ const ProfileScreen = ({ navigation }) => {
 
 const profileStyles = StyleSheet.create({
   bgContainer: {
-    flexGrow: 1,
+    flex: 1,
     backgroundColor: COLORS.background,
     paddingVertical: 0,
     alignItems: 'center',

@@ -2,6 +2,7 @@ import axios from "axios";
 import EncryptedStorage from 'react-native-encrypted-storage';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Alert } from 'react-native';
+import messaging from '@react-native-firebase/messaging';
 
 const BASE_URL = "http://lumia-env.eba-smvczc8e.us-east-1.elasticbeanstalk.com";
 
@@ -20,7 +21,7 @@ const saveAuthTokens = async ({ idToken, refreshToken, expiresIn }) => {
       refreshToken,
       expiryTime,
     }));
-    console.log("Auth tokens saved securely.");
+    //console.log("Auth tokens saved securely.");
   } catch (error) {
     console.error("Failed to save auth tokens:", error);
   }
@@ -41,7 +42,7 @@ const getAuthTokens = async () => {
 const removeAuthTokens = async () => {
   try {
     await EncryptedStorage.removeItem("authTokens");
-    console.log("Auth tokens removed.");
+    //console.log("Auth tokens removed.");
   } catch (error) {
     console.error("Failed to remove auth tokens:", error);
   }
@@ -153,12 +154,12 @@ const extractApiErrorMessage = (err) => {
 // Create new user
 export const createUser = async (email, password, account_type) => {
     try {
-      console.log("Attempting to create user...");
+      //console.log("Attempting to create user...");
       const response = await api.post("/create-user", { email, password, account_type });
-      console.log("User creation response:", response.data);
+      //console.log("User creation response:", response.data);
 
       if (response.status >= 200 && response.status < 300 && (response.data.status === 'success' || response.data.idToken)) {
-        console.log("User created successfully. Attempting to log in...");
+        //console.log("User created successfully. Attempting to log in...");
         const loginResponse = await loginUser(email, password, account_type);
         return loginResponse;
       } else {
@@ -176,9 +177,9 @@ export const createUser = async (email, password, account_type) => {
 // Login user with error handling
 export const loginUser = async (email, password, account_type) => {
     try {
-      console.log("Attempting to log in user...");
+      //console.log("Attempting to log in user...");
       const response = await api.post("/login", { email, password, account_type });
-      console.log("Login response:", response.data);
+      //console.log("Login response:", response.data);
 
       if (response.data && response.data.idToken && response.data.refreshToken && response.data.expiresIn) {
         await saveAuthTokens(response.data);
@@ -198,12 +199,26 @@ export const loginUser = async (email, password, account_type) => {
 // ... (rest of your functions: logout, refreshFirebaseToken, checkLoginStatus, saveUserDetails, fetchAndStoreUserDetails)
 // These functions will use the updated extractApiErrorMessage
 export const logout = async () => {
-    console.log("Attempting to log out...");
+    //console.log("Attempting to log out...");
+    const tokens = await getAuthTokens();
+    const idToken = tokens?.idToken;
     try {
+      // Remove push token from backend
+      await fetch('http://lumia-env.eba-smvczc8e.us-east-1.elasticbeanstalk.com/save-push-token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          idToken: idToken,
+          push_token: '',
+        }),
+      });
+      // Delete FCM token from device
+      await messaging().deleteToken();
       await removeAuthTokens();
-      await AsyncStorage.removeItem("userDetails");
-      await AsyncStorage.removeItem("account_type");
-      console.log("User successfully logged out and data cleared.");
+      await AsyncStorage.multiRemove(["userDetails", "account_type", "chatHistory","lastMoodFetchDate","moodAnalysisData","medicines"]);
+      //console.log("User successfully logged out and data cleared.");
     } catch (error) {
       console.error("Error during logout:", error);
       Alert.alert("Logout Error", "Failed to log out completely. Please try restarting the app.");
@@ -222,7 +237,7 @@ const refreshFirebaseToken = async () => {
 
       if (response.data && response.data.idToken && response.data.refreshToken && response.data.expiresIn) {
         await saveAuthTokens(response.data);
-        console.log("Firebase token refreshed successfully!");
+        //console.log("Firebase token refreshed successfully!");
         return true;
       } else {
         console.warn("Token refresh failed: Invalid response from server.", response.data);
@@ -244,7 +259,7 @@ export const checkLoginStatus = async () => {
     const tokens = await getAuthTokens();
 
     if (!tokens || !tokens.idToken || !tokens.expiryTime) {
-      console.log("No valid tokens found.");
+      //console.log("No valid tokens found.");
       return false;
     }
 
@@ -252,10 +267,10 @@ export const checkLoginStatus = async () => {
     const currentTime = Date.now();
 
     const isIdTokenValid = currentTime < idTokenExpiryTime;
-    console.log(`ID Token valid: ${isIdTokenValid} (Expires: ${new Date(idTokenExpiryTime).toLocaleString()})`);
+    //console.log(`ID Token valid: ${isIdTokenValid} (Expires: ${new Date(idTokenExpiryTime).toLocaleString()})`);
 
     if (isIdTokenValid) {
-      console.log("User is logged in (ID token is valid).");
+      //console.log("User is logged in (ID token is valid).");
       return true;
     } else {
       const refreshed = await refreshFirebaseToken();
@@ -268,7 +283,7 @@ export const checkLoginStatus = async () => {
 };
 
 export const saveUserDetails = async (profileData) => {
-    console.log("Attempting to save user details...");
+    //console.log("Attempting to save user details...");
     const tokens = await getAuthTokens();
     if (!tokens || !tokens.idToken) {
       Alert.alert("Authentication Required", "Please log in to save your details.");
@@ -286,7 +301,7 @@ export const saveUserDetails = async (profileData) => {
         idToken,
         ...cleanedProfileData
       });
-      console.log("User details saved response:", response.data);
+      //console.log("User details saved response:", response.data);
       return response.data;
     } catch (err) {
       const errorMessage = extractApiErrorMessage(err);
@@ -310,7 +325,6 @@ export const fetchAndStoreUserDetails = async () => {
       if (response.data && response.data.status === 'success' && response.data.data) {
         const userDetails = response.data.data;
         await AsyncStorage.setItem('userDetails', JSON.stringify(userDetails));
-        console.log("User details fetched and stored successfully:", userDetails);
         return userDetails;
       } else {
         const errorMessage = response.data.message || 'Failed to fetch user details. Invalid response.';
@@ -363,13 +377,7 @@ export const saveMedicinesApi = async (medicinesArray) => {
   }
 };
 
-<<<<<<< HEAD
-
-
 export const saveHealthMetricsApi = async (healthMetrics) => {
-=======
-export const saveReminder = async (medicine) => {
->>>>>>> origin/ashu
   try {
     const tokens = await getAuthTokens();
     const idToken = tokens?.idToken;
@@ -378,7 +386,6 @@ export const saveReminder = async (medicine) => {
       Alert.alert("Authentication Error", "Could not retrieve user session. Please log in again.");
       throw new Error("ID token not available.");
     }
-<<<<<<< HEAD
 
     const payload = {
       idToken,
@@ -391,29 +398,6 @@ export const saveReminder = async (medicine) => {
     };
 
     const response = await api.post("/save-health-metrics", payload, {
-=======
-    
-
-const payload = {
-      idToken,
-      reminder_id: medicine.id,
-      medicine_name: medicine.name,
-      pill_details: medicine.dosage,
-      time: medicine.time.toISOString(),
-      end_date: medicine.duration.toISOString(),
-      amount_per_box: medicine.amountPerBox.toString(),
-      current_quantity: medicine.currentQuantity.toString(),
-      take_medicine_alert: medicine.enableTakeAlert.toString(),
-      ring_phone: medicine.ringPhone.toString(),
-      send_message: medicine.sendMessage.toString(),
-      refill_reminder: medicine.refillReminder.toString(),
-      set_day_before_refill: medicine.refillDays.toString(),
-      set_refill_date: medicine.refillDate.toISOString(),
-      start_from_today: medicine.startFromToday.toString(),
-    };
-
-    const response = await api.post("/set-medicine-reminder", payload, {
->>>>>>> origin/ashu
       headers: {
         "Content-Type": "application/json",
       },
@@ -426,7 +410,6 @@ if (!response.status == 200) {
     return response.data;
   } catch (error) {
     const errorData = error.response?.data || { message: error.message };
-<<<<<<< HEAD
     Alert.alert("API call error (saveHealthMetricsApi):", error);
   }
 };
@@ -545,6 +528,7 @@ export const deleteMedicineApi = async (medicineid) => {
   try {
     const tokens = await getAuthTokens();
     const idToken = tokens?.idToken;
+     // Debugging line to check the ID token
 
     if (!idToken) {
       Alert.alert("Authentication Error", "Could not retrieve user session. Please log in again.");
@@ -563,7 +547,7 @@ export const deleteMedicineApi = async (medicineid) => {
     });
 
     if (response.status === 200) {
-      console.log("Medicine deleted successfully:", response.data);
+      //console.log("Medicine deleted successfully:", response.data);
       return response.data; // Return data on success
     } else {
       // Handle other successful statuses if applicable (e.g., 204 No Content)
@@ -574,7 +558,6 @@ export const deleteMedicineApi = async (medicineid) => {
     console.error("API call error (deleteMedicineApi):", error); // Log the full error
     const errorMessage = error.response?.data?.message || error.message || "An unknown error occurred.";
     Alert.alert("Deletion Error", errorMessage);
-    throw error; // Re-throw the error for further handling up the call stack
   }
 };
 
@@ -746,8 +729,7 @@ export const removeParentApi = async (id) => {
     Alert.alert("API call error (removeParentApi):", errorMessage); 
   }
 };
-
-export const saveReminder = async (medicine) => {
+export const getMoodAnalysisApi = async (childId) => {
   try {
     const tokens = await getAuthTokens();
     const idToken = tokens?.idToken;
@@ -756,39 +738,201 @@ export const saveReminder = async (medicine) => {
       Alert.alert("Authentication Error", "Could not retrieve user session. Please log in again.");
       throw new Error("ID token not available.");
     }
-    
 
-const payload = {
-      idToken,
-      reminder_id: medicine.id,
-      medicine_name: medicine.name,
-      pill_details: medicine.dosage,
-      time: medicine.time.toISOString(),
-      end_date: medicine.duration.toISOString(),
-      amount_per_box: medicine.amountPerBox.toString(),
-      current_quantity: medicine.currentQuantity.toString(),
-      take_medicine_alert: medicine.enableTakeAlert.toString(),
-      ring_phone: medicine.ringPhone.toString(),
-      send_message: medicine.sendMessage.toString(),
-      refill_reminder: medicine.refillReminder.toString(),
-      set_day_before_refill: medicine.refillDays.toString(),
-      set_refill_date: medicine.refillDate.toISOString(),
-      start_from_today: medicine.startFromToday.toString(),
-    };
-
-    const response = await api.post("/set-medicine-reminder", payload, {
+    const response = await api.post("/mood-analysis", { idToken, child_id: childId }, {
       headers: {
         "Content-Type": "application/json",
       },
     });
-    
-if (!response.status == 200) {
-  Alert.alert("Server Error", "Unexpected response status: " + response.status);
-  throw new Error("Unexpected server response");
-}
-    return response.data;
+
+    if (response.status === 200 && response.data?.status === "success") {
+      return response.data.mood_analysis;
+    } else {
+      const errorMessage = response.data?.message || "Failed to fetch mood analysis.";
+      Alert.alert("Mood Analysis Error", errorMessage);
+      throw new Error(errorMessage);
+    }
   } catch (error) {
-    const errorData = error.response?.data || { message: error.message };
-    Alert.alert("API call error (saveReminder):", error);
+    const errorMessage = error.response?.data?.message || error.message || "An unknown error occurred.";
+    Alert.alert("API call error (getMoodAnalysisApi):", errorMessage);
+    throw error;
   }
 };
+export const getConversationSummaryApi = async (uid) => {
+  try {
+    const tokens = await getAuthTokens();
+    const idToken = tokens?.idToken;
+
+    if (!idToken) {
+      Alert.alert("Authentication Error", "Could not retrieve user session. Please log in again.");
+      throw new Error("ID token not available.");
+    }
+
+    const response = await api.post("/conversation-summary", { idToken, child_id: uid }, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (response.status === 200 && response.data?.status === "success") {
+      return response.data.conversation_summary;
+    } else {
+      const errorMessage = response.data?.message || "Failed to fetch conversation summary.";
+      Alert.alert("Conversation Summary Error", errorMessage);
+      throw new Error(errorMessage);
+    }
+  } catch (error) {
+    const errorMessage = error.response?.data?.message || error.message || "An unknown error occurred.";
+    Alert.alert("API call error (getConversationSummaryApi):", errorMessage);
+    throw error;
+  }
+};
+export const getMedicineRemindersApi = async () => {
+  try {
+    const tokens = await getAuthTokens();
+    const idToken = tokens?.idToken;
+
+    if (!idToken) {
+      Alert.alert("Authentication Error", "Could not retrieve user session. Please log in again.");
+      throw new Error("ID token not available.");
+    }
+
+    const response = await api.post("/get-medicine-reminders", { idToken }, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (response.status === 200 && response.data) {
+      return response.data.reminders;
+    } else {
+      const errorMessage = response.data?.message || "Failed to fetch medicine reminders.";
+      Alert.alert("Medicine Reminders Error", errorMessage);
+      throw new Error(errorMessage);
+    }
+  } catch (error) {
+    const errorMessage = error.response?.data?.message || error.message || "An unknown error occurred.";
+    Alert.alert("API call error (getMedicineRemindersApi):", errorMessage);
+    throw error;
+  }
+};
+export const generateTodoApi = async () => {
+  try {
+    const tokens = await getAuthTokens();
+    const idToken = tokens?.idToken;
+
+    if (!idToken) {
+      Alert.alert("Authentication Error", "Could not retrieve user session. Please log in again.");
+      throw new Error("ID token not available.");
+    }
+
+    const response = await api.post("/generate-todo", { idToken }, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (response.status === 200 && response.data) {
+      return response.data.todo_lists;
+    } else {
+      const errorMessage = response.data?.message || "Failed to generate todo.";
+      Alert.alert("Generate Todo Error", errorMessage);
+      throw new Error(errorMessage);
+    }
+  } catch (error) {
+    const errorMessage = error.response?.data?.message || error.message || "An unknown error occurred.";
+    Alert.alert("API call error (generateTodoApi):", errorMessage);
+    throw error;
+  }
+};
+export const forgotPasswordApi = async (email) => {
+  try {
+    const response = await api.post("/forgot-password", { email }, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (response.status === 200 && response.data?.status === "success") {
+      return response.data.message || "Password reset email sent successfully.";
+    } else {
+      const errorMessage = response.data?.message || "Failed to send password reset email.";
+      Alert.alert("Forgot Password Error", errorMessage);
+      throw new Error(errorMessage);
+    }
+  } catch (error) {
+    const errorMessage = error.response?.data?.message || error.message || "An unknown error occurred.";
+    Alert.alert("API call error (forgotPasswordApi):", errorMessage);
+    throw error;
+  }
+
+};
+ export const getWeatherApi = async (latitude, longitude) => {
+    try {
+      const tokens = await getAuthTokens();
+      const idToken = tokens?.idToken;
+
+      if (!idToken) {
+        Alert.alert("Authentication Error", "Could not retrieve user session. Please log in again.");
+        throw new Error("ID token not available.");
+      }
+
+      const payload = {
+        idToken,
+        latitude,
+        longitude
+      };
+
+      const response = await api.post("/weather", payload, {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (response.status === 200 && response.data) {
+        return response.data;
+      } else {
+        const errorMessage = response.data?.message || "Failed to fetch weather data.";
+        Alert.alert("Weather API Error", errorMessage);
+        throw new Error(errorMessage);
+      }
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || error.message || "An unknown error occurred.";
+      Alert.alert("API call error (getWeatherApi):", errorMessage);
+      throw error;
+    }
+  };
+  export const unlinkChildApi = async (targetId) => {
+    try {
+      const tokens = await getAuthTokens();
+      const idToken = tokens?.idToken;
+
+      if (!idToken) {
+        Alert.alert("Authentication Error", "Could not retrieve user session. Please log in again.");
+        throw new Error("ID token not available.");
+      }
+
+      const payload = {
+        idToken,
+        target_id: targetId
+      };
+
+      const response = await api.post("/unlink-child", payload, {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (response.status === 200 && response.data?.status === "success") {
+        return response.data.message || "Child unlinked successfully.";
+      } else {
+        const errorMessage = response.data?.message || "Failed to unlink child.";
+        Alert.alert("Unlink Child Error", errorMessage);
+        throw new Error(errorMessage);
+      }
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || error.message || "An unknown error occurred.";
+      Alert.alert("API call error (unlinkChildApi):", errorMessage);
+      throw error;
+    }
+  };

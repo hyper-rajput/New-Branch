@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -20,6 +20,41 @@ const MessagesScreen = ({ navigation }) => {
         const storedMessages = await AsyncStorage.getItem('chatHistory');
         if (storedMessages) {
           setMessages(JSON.parse(storedMessages));
+        } else {
+          // No chat history, fetch from /chat API
+          const tokens = await EncryptedStorage.getItem('authTokens');
+          let idToken = null;
+          if (tokens) {
+            try {
+              const parsedTokens = JSON.parse(tokens);
+              idToken = parsedTokens.idToken;
+            } catch (e) {
+              console.error('Failed to parse authTokens:', e);
+            }
+          }
+          try {
+            const response = await fetch(VOICE_ASSISTANT_API_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: '', idToken }),
+            });
+            if (response.ok) {
+              const data = await response.json();
+              if (data.chat_history && Array.isArray(data.chat_history)) {
+                // Convert API chat_history to local message format
+                const formattedHistory = data.chat_history.map((msg, idx) => ({
+                  id: msg.timestamp || idx.toString(),
+                  text: msg.content,
+                  sender: msg.role === 'user' ? 'user' : 'lumia',
+                  timestamp: new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                }));
+                setMessages(formattedHistory);
+                await AsyncStorage.setItem('chatHistory', JSON.stringify(formattedHistory));
+              }
+            }
+          } catch (error) {
+            console.error('Error fetching initial chat history:', error);
+          }
         }
       } catch (error) {
         console.error('Error loading chat history:', error);
@@ -62,6 +97,13 @@ const MessagesScreen = ({ navigation }) => {
       } catch (e) {
         console.error('Failed to parse authTokens:', e);
       }
+    }
+
+    if (!idToken) {
+      Alert.alert('Session Expired', 'Please log in again.');
+      navigation.navigate('LoginScreen');
+      setIsSending(false);
+      return;
     }
 
     try {

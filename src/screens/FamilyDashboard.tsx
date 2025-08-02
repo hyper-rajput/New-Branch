@@ -1,26 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet, SafeAreaView, TouchableOpacity, TextInput, Alert, ScrollView, Modal } from 'react-native';
+import { View, Text, FlatList, StyleSheet, SafeAreaView, TouchableOpacity, TextInput, Alert, ScrollView, Modal, BackHandler } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
-import { searchFamilyApi, sendRequestApi, fetchchildApi,fetchAndStoreUserDetails,removeParentApi } from '../services/api'; // Import your API service for searching family members
+import {initializeNotifications} from '../services/NotificationService';
+import { searchFamilyApi, sendRequestApi, fetchchildApi,fetchAndStoreUserDetails, unlinkChildApi } from '../services/api'; // Import your API service for searching family members
 // Define the type for a family member
 interface FamilyMember {
   name: string;// e.g., Parent, Child, Sibling, Grandparent
   status:string;
   uid: string; // Unique identifier for the family member
-  role: string;
 }
 
-// Define the type for chat summary analysis
-interface ChatSummary {
-  moodTrend: string;
-  topicsDiscussed: string[];
-  concerns: string[];
-  lastUpdated: string;
-  engagementLevel: string;
-  sentimentScore: number;
-}
+
+
+
 
 // Sample data for approved family members
 const approvedMembers: FamilyMember[] = [];
@@ -33,6 +26,7 @@ const FamilyDashboard: React.FC = () => {
   const [filteredElders, setFilteredElders] = useState<FamilyMember[]>([]);
   const [members, setMembers] = useState<FamilyMember[]>(approvedMembers);
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
+
 
   // Handle search input
   const handleSearch = async () => {
@@ -58,7 +52,7 @@ const FamilyDashboard: React.FC = () => {
   };
   const handleRemove = async (item: any) => {
     try {
-      await removeParentApi(item.id);
+      await unlinkChildApi(item.uid);
       setMembers(prev => prev.filter(member => member.uid !== item.uid));
       Alert.alert(
         'Action Confirmed',
@@ -97,6 +91,17 @@ const FamilyDashboard: React.FC = () => {
       Alert.alert('Failed to send request. Please try again.');
     }
   };
+
+    useEffect(() => {
+    const initializeAppData = async () => {
+      const unsubscribeNotifications = initializeNotifications();
+      return () => {
+        unsubscribeNotifications();
+      };
+    };
+
+    initializeAppData();
+  }, []);
     
     useEffect(() => {
       const fetchData = async () => {
@@ -120,22 +125,37 @@ const FamilyDashboard: React.FC = () => {
       fetchAndStoreUserDetails();
     }, []);
 
+  useEffect(() => {
+    const beforeRemoveListener = (e: any) => {
+      e.preventDefault();
+      BackHandler.exitApp(); // Close the app if user tries to go back
+    };
+    navigation.addListener('beforeRemove', beforeRemoveListener);
+    return () => navigation.removeListener('beforeRemove', beforeRemoveListener);
+  }, [navigation]);
+
   // Render each approved family member item
   const renderFamilyMember = ({ item }: { item: FamilyMember }) => (
-    <TouchableOpacity
-      style={styles.memberContainer}
-      onPress={() => navigation.navigate('MemberDetails', { memberId: item.uid, memberName: item.name })}
-    >
+    <View style={styles.memberContainer}>
       <Text style={styles.memberName}>{item.name}</Text>
-       <Text style={styles.memberRole}>{item.status}</Text>
-       <TouchableOpacity
-                 style={[styles.button, styles.denyButton]}
-                 onPress={() => handleRemove(item)}
-               
-               >
-                 <Text style={styles.buttonText}>Remove</Text>
-               </TouchableOpacity>
-    </TouchableOpacity>
+      <Text style={styles.memberRole}>{item.status}</Text>
+      {item.status === 'approved' && (
+        <>
+          <TouchableOpacity
+            style={{}}
+            onPress={() => navigation.navigate('FamilyAnalysis', { memberId: item.uid })}
+          >
+            <Text style={[styles.buttonText, { color: '#3B82F6', marginBottom: 8, textAlign: 'right', alignSelf: 'flex-end',top:-20 }]}>View Analysis</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.button, styles.denyButton]}
+            onPress={() => handleRemove(item)}
+          >
+            <Text style={styles.buttonText}>Remove</Text>
+          </TouchableOpacity>
+        </>
+      )}
+    </View>
   );
 
   // Render each search result item
@@ -154,22 +174,7 @@ const FamilyDashboard: React.FC = () => {
     </View>
   );
 
-  // Render mood trend items
-  const renderMoodTrend = ({ item }: { item: string }) => (
-    <View style={styles.moodTrendItem}>
-      <Text style={styles.moodTrendText}>{item}</Text>
-    </View>
-  );
 
-  // Render topics discussed
-  const renderTopic = ({ item }: { item: string }) => (
-    <Text style={styles.summaryItem}>• {item}</Text>
-  );
-
-  // Render concerns
-  const renderConcern = ({ item }: { item: string }) => (
-    <Text style={styles.summaryItem}>• {item}</Text>
-  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -215,102 +220,6 @@ const FamilyDashboard: React.FC = () => {
           <Text style={styles.noResultsText}>No elder members found.</Text>
         )}
 
-        {/* Mood Compartment */}
-        <View style={styles.compartment}>
-          <Text style={styles.compartmentTitle}>Elder's Mood Overview</Text>
-          <View style={styles.compartmentContent}>
-            <Text style={styles.moodText}>
-              {elderMood.mood} {elderMood.emoji}
-            </Text>
-            <Text style={styles.moodDescription}>{elderMood.moodDescription}</Text>
-            <Text style={styles.label}>Mood Trend (Last 3 Days):</Text>
-            <FlatList
-              data={elderMood.moodTrend}
-              renderItem={renderMoodTrend}
-              keyExtractor={(item, index) => index.toString()}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.moodTrendList}
-            />
-            <Text style={styles.lastUpdated}>Last Updated: {elderMood.lastUpdated}</Text>
-          </View>
-        </View>
-
-        {/* Medication Status Compartment */}
-        <View style={styles.compartment}>
-          <Text style={styles.compartmentTitle}>Medication Adherence</Text>
-          <View style={styles.compartmentContent}>
-            <View style={styles.medicationStatusRow}>
-              <MaterialIcons
-                name={medicationStatus.allTaken ? 'check-circle' : 'cancel'}
-                size={24}
-                color={medicationStatus.allTaken ? '#4CAF50' : '#F44336'}
-                style={styles.statusIcon}
-              />
-              <Text style={styles.medicationText}>
-                {medicationStatus.allTaken
-                  ? 'All medicines taken today'
-                  : 'Some medicines missed today'}
-              </Text>
-            </View>
-            <View style={styles.medicationDetailRow}>
-              <Text style={styles.label}>Missed Doses (Last 7 Days):</Text>
-              <Text style={styles.value}>{medicationStatus.missedDoses}</Text>
-            </View>
-            <View style={styles.medicationDetailRow}>
-              <Text style={styles.label}>Adherence Rate:</Text>
-              <Text style={styles.value}>{medicationStatus.adherenceRate}%</Text>
-            </View>
-            <View style={styles.medicationDetailRow}>
-              <Text style={styles.label}>Next Dose:</Text>
-              <Text style={styles.value}>{medicationStatus.nextDose}</Text>
-            </View>
-            <TouchableOpacity style={styles.actionButton}>
-              <Text style={styles.actionButtonText}>View Schedule</Text>
-            </TouchableOpacity>
-            <Text style={styles.lastUpdated}>Last Updated: {medicationStatus.lastUpdated}</Text>
-          </View>
-        </View>
-
-        {/* Chat Summary Analysis Compartment */}
-        <View style={styles.compartment}>
-          <View style={styles.compartmentHeader}>
-            <Text style={styles.compartmentTitle}>Chat Insights with Lumia</Text>
-            <TouchableOpacity onPress={() => setIsSummaryExpanded(true)}>
-              <Ionicons name="expand" size={24} color="#333" />
-            </TouchableOpacity>
-          </View>
-          <View style={styles.compartmentContent}>
-            <View style={styles.summaryRow}>
-              <Text style={styles.label}>Engagement Level:</Text>
-              <Text style={styles.value}>{chatSummary.engagementLevel}</Text>
-            </View>
-            <Text style={styles.label}>Sentiment Score:</Text>
-            <View style={styles.sentimentContainer}>
-              <View style={[styles.sentimentBar, { width: `${chatSummary.sentimentScore}%` }]} />
-              <Text style={styles.sentimentScore}>{chatSummary.sentimentScore}/100</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.label}>Mood Trend:</Text>
-              <Text style={styles.value}>{chatSummary.moodTrend}</Text>
-            </View>
-            <Text style={styles.label}>Topics Discussed:</Text>
-            <FlatList
-              data={chatSummary.topicsDiscussed}
-              renderItem={renderTopic}
-              keyExtractor={(item, index) => index.toString()}
-              style={styles.summaryList}
-            />
-            <Text style={styles.label}>Concerns Noted:</Text>
-            <FlatList
-              data={chatSummary.concerns}
-              renderItem={renderConcern}
-              keyExtractor={(item, index) => index.toString()}
-              style={styles.summaryList}
-            />
-            <Text style={styles.lastUpdated}>Last Updated: {chatSummary.lastUpdated}</Text>
-          </View>
-        </View>
 
         {/* Approved Family Members */}
         <View style={styles.approvedMembersContainer}>
@@ -323,52 +232,6 @@ const FamilyDashboard: React.FC = () => {
           />
         </View>
       </ScrollView>
-
-      {/* Full-Screen Chat Summary Modal */}
-      <Modal
-        visible={isSummaryExpanded}
-        animationType="slide"
-        transparent={false}
-      >
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Chat Insights with Lumia</Text>
-            <TouchableOpacity onPress={() => setIsSummaryExpanded(false)}>
-              <Ionicons name="close" size={30} color="#333" />
-            </TouchableOpacity>
-          </View>
-          <ScrollView contentContainerStyle={styles.modalContent}>
-            <View style={styles.modalSummaryRow}>
-              <Text style={styles.modalLabel}>Engagement Level:</Text>
-              <Text style={styles.modalValue}>{chatSummary.engagementLevel}</Text>
-            </View>
-            <Text style={styles.modalLabel}>Sentiment Score:</Text>
-            <View style={styles.sentimentContainer}>
-              <View style={[styles.sentimentBar, { width: `${chatSummary.sentimentScore}%` }]} />
-              <Text style={styles.sentimentScore}>{chatSummary.sentimentScore}/100</Text>
-            </View>
-            <View style={styles.modalSummaryRow}>
-              <Text style={styles.modalLabel}>Mood Trend:</Text>
-              <Text style={styles.modalValue}>{chatSummary.moodTrend}</Text>
-            </View>
-            <Text style={styles.modalLabel}>Topics Discussed:</Text>
-            <FlatList
-              data={chatSummary.topicsDiscussed}
-              renderItem={renderTopic}
-              keyExtractor={(item, index) => index.toString()}
-              style={styles.modalSummaryList}
-            />
-            <Text style={styles.modalLabel}>Concerns Noted:</Text>
-            <FlatList
-              data={chatSummary.concerns}
-              renderItem={renderConcern}
-              keyExtractor={(item, index) => index.toString()}
-              style={styles.modalSummaryList}
-            />
-            <Text style={styles.modalLastUpdated}>Last Updated: {chatSummary.lastUpdated}</Text>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
     </SafeAreaView>
   );
 };
@@ -707,42 +570,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginTop: 8,
-  },
-      
-  centerButtonContainer: {
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  searchButton: {
-    backgroundColor: '#3B82F6',
-    paddingVertical: 8,
-    paddingHorizontal: 32,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 150,
-  },
-  searchButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-    buttonText: {
-    color: '#FFF',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-    button: {
-    marginTop: 8,
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-    minWidth: 80,
-  },
-    denyButton: {
-    backgroundColor: '#DC2626',
-  },
+  }
 
 });
 

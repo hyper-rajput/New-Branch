@@ -129,8 +129,8 @@ const FamilyMembersScreen: React.FC = () => {
       <View style={styles.headerContainer}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => navigation.navigate('Dashboard')}
-          accessibilityLabel="Go back to dashboard"
+              onPress={() => navigation.goBack()}
+              accessibilityLabel="Go back"
         >
           <Icon name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>

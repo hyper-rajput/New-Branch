@@ -16,11 +16,19 @@ import {
 import Icon from "react-native-vector-icons/MaterialIcons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import Slider from "@react-native-community/slider";
-import notifee, { AndroidImportance, TimestampTrigger, TriggerType, AuthorizationStatus } from '@notifee/react-native';
-import Sound from 'react-native-sound';
+import notifee, {
+  AndroidImportance,
+  TimestampTrigger,
+  TriggerType,
+  AuthorizationStatus,
+  EventType,
+} from '@notifee/react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import axios from "axios";
 import EncryptedStorage from 'react-native-encrypted-storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import messaging from '@react-native-firebase/messaging';
+
 // Define types for medicine data
 interface Medicine {
   id: string;
@@ -124,7 +132,7 @@ const MedicationReminder: React.FC = () => {
         },
       });
       
-  if (!response.status == 200) {
+  if (response.status !== 200) {
     Alert.alert("Server Error", "Unexpected response status: " + response.status);
   }
       return response.data;
@@ -146,51 +154,100 @@ const MedicationReminder: React.FC = () => {
     }
   }, [newMedicineFromHealth]);
 
-  // Setup notifications
+  // Notifee setup: channel, permissions, and action handler
   useEffect(() => {
     const setupNotifications = async () => {
-      // Initialize notification channel for Android
+      // Only setup notifications if user is logged in
+      const tokens = await EncryptedStorage.getItem("authTokens");
+      if (!tokens) return;
       if (Platform.OS === "android") {
         try {
           await notifee.createChannel({
-      id: "alarm",
-      name: "Alarm Channel",
-      importance: AndroidImportance.HIGH,
-      sound: "alarm",
-      vibration: true,
-      bypassDnd: true,
-      // @ts-ignore
-      channelType: "alarm",
-    });
-  }
-  catch (error) {
+            id: "alarm",
+            name: "Alarm Channel",
+            importance: AndroidImportance.HIGH,
+            sound: "alarm",
+            vibration: true,
+            bypassDnd: true,
+          });
+        } catch (error) {
           console.error("Failed to create notification channel:", error);
           Alert.alert("Error", "Failed to set up notifications. Please try again.");
           return;
         }
       }
+      const permission = await notifee.requestPermission();
+      if (permission.authorizationStatus !== AuthorizationStatus.AUTHORIZED) {
+        Alert.alert("Permission Required", "Please enable notifications for reminders.");
+        return;
+      }
 
-      // Request notification permissions
-      const granted = await registerForPushNotifications();
-      if (!granted) return;
+      // Handler for notification actions (Yes/No)
+      const handleNotificationAction = async (detail: any) => {
+        const { pressAction, notification } = detail;
+        const medicineId: any = notification?.data?.medicineId;
+        const medicineName: any = notification?.data?.medicineName;
+        if (pressAction?.id === 'yes' || pressAction?.id === 'no') {
+          const response = pressAction.id;
+          await sendReminderResponse({
+            medicine_name: medicineName,
+            reminder_id: medicineId,
+            response,
+          });
+        }
+      };
 
-      // Listen for foreground notification events
-      const subscription = notifee.onForegroundEvent(async ({ type, detail }) => {
-        if (type === notifee.EventType.DELIVERED) {
-          const medicineId = detail.notification?.data?.medicineId as string;
-          const medicine = medicines.find((m) => m.id === medicineId);
-          if (medicine && medicine.ringPhone) await playSound();
+      // Foreground event listener
+      const unsubscribeForeground = notifee.onForegroundEvent(async ({ type, detail }) => {
+        if (type === EventType.ACTION_PRESS) {
+          await handleNotificationAction(detail);
+        }
+      });
+
+      // Background event listener
+      const unsubscribeBackground = notifee.onBackgroundEvent(async ({ type, detail }) => {
+        if (type === EventType.ACTION_PRESS) {
+          await handleNotificationAction(detail);
         }
       });
 
       return () => {
-        subscription();
-        if (sound) sound.release();
+        unsubscribeForeground();
+        unsubscribeBackground();
       };
     };
-
     setupNotifications();
   }, [medicines]);
+  
+  const getMedicineRemindersApi = async () => {
+  try {
+    const tokens = await getAuthTokens();
+    const idToken = tokens?.idToken;
+
+    if (!idToken) {
+      Alert.alert("Authentication Error", "Could not retrieve user session. Please log in again.");
+      throw new Error("ID token not available.");
+    }
+
+    const response = await api.post("/get-medicine-reminders", { idToken }, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (response.status === 200 && response.data) {
+      return response.data.reminders;
+    } else {
+      const errorMessage = response.data?.message || "Failed to fetch medicine reminders.";
+      Alert.alert("Medicine Reminders Error", errorMessage);
+      throw new Error(errorMessage);
+    }
+  } catch (error: any) {
+    const errorMessage = error.response?.data?.message || error.message || "An unknown error occurred.";
+    Alert.alert("API call error (getMedicineRemindersApi):", errorMessage);
+    throw error;
+  }
+};
 
   const registerForPushNotifications = async () => {
     const permission = await notifee.requestPermission();
@@ -220,60 +277,82 @@ const MedicationReminder: React.FC = () => {
     }
   };
 
+  // --- SCHEDULE NOTIFICATIONS ---
   const scheduleNotification = async (medicine: Medicine) => {
     if (!medicine.enableTakeAlert) return;
-
     const now = new Date();
     const selectedHour = medicine.time.getHours();
     const selectedMinute = medicine.time.getMinutes();
-    const triggerDate = new Date();
-    triggerDate.setHours(selectedHour, selectedMinute, 0, 0);
-
-    if (!medicine.startFromToday && triggerDate <= now) {
-      triggerDate.setDate(triggerDate.getDate() + 1);
-    }
-
-    if (triggerDate <= now) {
-      triggerDate.setDate(triggerDate.getDate() + 1);
-    }
-
-    const trigger: TimestampTrigger = {
+    // Scheduled time (e.g., 10:00 AM)
+    const scheduledDate = new Date();
+    scheduledDate.setHours(selectedHour, selectedMinute, 0, 0);
+    // 10 minutes before scheduled time
+    const beforeDate = new Date(scheduledDate.getTime() - 10 * 60 * 1000);
+    if (beforeDate <= now) beforeDate.setDate(beforeDate.getDate() + 1);
+    if (scheduledDate <= now) scheduledDate.setDate(scheduledDate.getDate() + 1);
+    // --- 1. Notification 10 minutes before ---
+    const beforeTrigger: TimestampTrigger = {
       type: TriggerType.TIMESTAMP,
-      timestamp: triggerDate.getTime(),
+      timestamp: beforeDate.getTime(),
     };
-
     try {
-      await saveReminder(medicine);
       await notifee.createTriggerNotification(
         {
-          id: medicine.id,
-          title: "Medication Reminder",
-          body: `Time to take ${medicine.dosage} of ${medicine.name}`,
-          data: { medicineId: medicine.id },
-         android: {
-  channelId: "alarm",
-  pressAction: { id: "default" },
-  sound: "alarm",
-  fullScreenAction: { id: "default" },
-},
+          id: `${medicine.id}-before`,
+          title: "Medicine Reminder",
+          body: `Reminder: Your time to take ‘${medicine.name}’ medicine is after 10 minutes.`,
+          data: { medicineId: medicine.id, medicineName: medicine.name },
+          android: {
+            channelId: "alarm",
+            pressAction: { id: "default" },
+            sound: "alarm",
+          },
         },
-        trigger
+        beforeTrigger
       );
     } catch (error) {
-      console.error("Failed to schedule notification:", error);
-      Alert.alert("Error", "Failed to schedule the notification. Please try again.");
+      console.error("Failed to schedule 'before' notification:", error);
     }
-
+    // --- 2. Notification at scheduled time with actions ---
+    const atTimeTrigger: TimestampTrigger = {
+      type: TriggerType.TIMESTAMP,
+      timestamp: scheduledDate.getTime(),
+    };
+    try {
+      await notifee.createTriggerNotification(
+        {
+          id: `${medicine.id}-ontime`,
+          title: "Did you take your medicine?",
+          body: `Did you take your ‘${medicine.name}’ medicine?`,
+          data: { medicineId: medicine.id },
+          android: {
+            channelId: "alarm",
+            pressAction: { id: "default" },
+            sound: "alarm",
+            actions: [
+              { title: "Yes", pressAction: { id: "yes" } },
+              { title: "No", pressAction: { id: "no" } },
+            ],
+          },
+          ios: {
+            categoryId: "med_reminder",
+          },
+        },
+        atTimeTrigger
+      );
+    } catch (error) {
+      console.error("Failed to schedule 'ontime' notification:", error);
+    }
+    // Optionally, handle refill reminder as before
     if (medicine.refillReminder && medicine.refillDate) {
+      const now = new Date();
       const refillTriggerDate = new Date(medicine.refillDate);
       refillTriggerDate.setDate(refillTriggerDate.getDate() - medicine.refillDays);
-
       if (refillTriggerDate > now) {
         const refillTrigger: TimestampTrigger = {
           type: TriggerType.TIMESTAMP,
           timestamp: refillTriggerDate.getTime(),
         };
-
         try {
           await notifee.createTriggerNotification(
             {
@@ -289,7 +368,6 @@ const MedicationReminder: React.FC = () => {
           );
         } catch (error) {
           console.error("Failed to schedule refill notification:", error);
-          Alert.alert("Error", "Failed to schedule the refill notification. Please try again.");
         }
       }
     }
@@ -300,14 +378,77 @@ const MedicationReminder: React.FC = () => {
     Alert.alert("Success", "All notifications cleared.");
   };
 
-  const addMedicine = () => {
+  const sendReminderResponse = async ({ medicine_name, reminder_id, response }: { medicine_name: string, reminder_id: string, response: string }) => {
+  try {
+    const tokens = await getAuthTokens();
+    const idToken = tokens?.idToken;
+
+    if (!idToken) {
+      Alert.alert("Authentication Error", "Could not retrieve user session. Please log in again.");
+      throw new Error("ID token not available.");
+    }
+
+    const result = await api.post("/save-reminder-response", { idToken:idToken, medicine_name:medicine_name, reminder_id:reminder_id, response:response }, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+  } catch (error) {
+    console.error("Failed to send reminder response:", error);
+    Alert.alert("Error", "Failed to send reminder response.");
+  }
+};
+  // Fetch medicines from AsyncStorage on mount
+  useEffect(() => {
+    const fetchMedicines = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('medicines');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          // Convert date strings back to Date objects
+          const revived = parsed.map((m: any) => ({
+            ...m,
+            time: new Date(m.time),
+            duration: new Date(m.duration),
+            refillDate: m.refillDate ? new Date(m.refillDate) : null,
+          }));
+          setMedicines(revived);
+        } else {
+          // If not in AsyncStorage, fetch from API
+          const apiReminders = await getMedicineRemindersApi();
+          if (Array.isArray(apiReminders)) {
+            const mapped = mapApiRemindersToMedicines(apiReminders);
+            setMedicines(mapped);
+            await AsyncStorage.setItem('medicines', JSON.stringify(mapped));
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load medicines from storage or API', e);
+      }
+    };
+    fetchMedicines();
+  }, []);
+
+  // Save medicines to AsyncStorage whenever medicines state changes
+  useEffect(() => {
+    const saveMedicines = async () => {
+      try {
+        await AsyncStorage.setItem('medicines', JSON.stringify(medicines));
+      } catch (e) {
+        console.error('Failed to save medicines to storage', e);
+      }
+    };
+    saveMedicines();
+  }, [medicines]);
+
+  const addMedicine = async () => {
     if (!medicineName || !dosage) {
       Alert.alert("Error", "Please fill in all required fields.");
       return;
     }
 
     const newMedicine: Medicine = {
-      id: medicineName.toLowerCase(),
+      id: `${medicineName.toLowerCase().replace(/\s+/g, "_")}_${Date.now()}`,
       name: medicineName,
       dosage,
       time: new Date(time),
@@ -327,17 +468,21 @@ const MedicationReminder: React.FC = () => {
     setMedicines((prev) => [...prev, newMedicine]);
 
     if (enableTakeAlert || refillReminder) {
-      scheduleNotification(newMedicine);
+      try {
+        await saveReminder(newMedicine);
+        scheduleNotification(newMedicine);
+        const timeString = time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        Alert.alert("Success", `Medicine added with reminder at ${timeString}`);
+        resetForm();
+      } catch (error) {
+        Alert.alert("Error", "Failed to save reminder. Please try again.");
+      }
     } else {
       Alert.alert(
         "Reminder Not Scheduled",
         "You haven't enabled the 'Take Medicine Alert' or 'Refill Reminder'. Enable at least one to receive notifications."
       );
     }
-
-    const timeString = time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    Alert.alert("Success", `Medicine added with reminder at ${timeString}`);
-    resetForm();
   };
 
   const resetForm = () => {
@@ -378,13 +523,42 @@ const MedicationReminder: React.FC = () => {
   };
 
   const deleteMedicine = (id: string) => {
-    Alert.alert("Delete Reminder", "Are you sure you want to delete this medicine reminder?", [
+    Alert.alert(`Delete Reminder`, "Are you sure you want to delete this medicine reminder?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
-        onPress: () => {
-          setMedicines((prev) => prev.filter((m) => m.id !== id));
-          notifee.cancelNotification(id);
+        onPress: async () => {
+          try {
+            const tokens = await getAuthTokens();
+            const idToken = tokens?.idToken;
+            if (!idToken) {
+              Alert.alert("Authentication Error", "Could not retrieve user session. Please log in again.");
+              return;
+            }
+            // Call API to delete reminder (use DELETE as per backend expectation)
+            const response = await api.delete("/delete-medicine-reminder", {
+              data: {
+                idToken: idToken,
+                reminder_id: id,
+              },
+              headers: { "Content-Type": "application/json" },
+            });
+            if (response.status === 200) {
+              const updated = medicines.filter((m) => m.id !== id);
+              setMedicines(updated);
+              try {
+                await AsyncStorage.setItem('medicines', JSON.stringify(updated));
+              } catch (e) {
+                console.error('Failed to update medicines in storage', e);
+              }
+              notifee.cancelNotification(id);
+              Alert.alert("Success", "Medicine reminder deleted successfully.");
+            } else {
+              Alert.alert("Delete Failed", "Failed to delete reminder from server.");
+            }
+          } catch (error) {
+            Alert.alert("API call error (deleteMedicine)", error?.message || "Unknown error");
+          }
         },
         style: "destructive",
       },
@@ -495,8 +669,8 @@ const MedicationReminder: React.FC = () => {
           <View style={styles.headerContainer}>
             <TouchableOpacity
               style={styles.backButton}
-              onPress={() => navigation.navigate("Dashboard")}
-              accessibilityLabel="Go back to dashboard"
+              onPress={() => navigation.goBack()}
+              accessibilityLabel="Go back"
             >
               <Icon name="arrow-back" size={24} color="#1F2A44" />
             </TouchableOpacity>
@@ -510,6 +684,7 @@ const MedicationReminder: React.FC = () => {
               <TextInput
                 style={styles.inputWithIcon}
                 placeholder="Medicine Name"
+                placeholderTextColor="#A0AEC0"
                 value={medicineName}
                 onChangeText={setMedicineName}
                 autoCapitalize="words"
@@ -523,6 +698,7 @@ const MedicationReminder: React.FC = () => {
               <TextInput
                 style={styles.inputWithIcon}
                 placeholder="Dosage (e.g., 2 pills)"
+                placeholderTextColor="#A0AEC0"
                 value={dosage}
                 onChangeText={setDosage}
                 returnKeyType="done"
@@ -756,6 +932,39 @@ const MedicationReminder: React.FC = () => {
     </SafeAreaComponent>
   );
 };
+
+// Function to send reminder response to API
+
+
+// Helper to map API response to Medicine[]
+const mapApiRemindersToMedicines = (apiReminders: any[]): Medicine[] => {
+  return apiReminders.map((item) => ({
+    id: item.reminder_id || item.medicine_name?.toLowerCase() || Math.random().toString(36).substr(2, 9),
+    name: item.medicine_name || '',
+    dosage: item.pill_details || '',
+    time: item.time ? new Date(item.time) : (item.take_medicine_alert && item.take_medicine_alert !== 'true' && item.take_medicine_alert !== 'false' ? parseTimeString(item.take_medicine_alert) : new Date()),
+    duration: item.end_date ? new Date(item.end_date) : new Date(),
+    amountPerBox: parseInt(item.amount_per_box) || 10,
+    currentQuantity: item.current_quantity ? parseInt(item.current_quantity) : 10,
+    enableTakeAlert: item.take_medicine_alert === 'true' || (typeof item.take_medicine_alert === 'string' && /^\d{2}:\d{2}$/.test(item.take_medicine_alert)),
+    ringPhone: item.ring_phone === 'true',
+    sendMessage: item.send_message === 'true' || typeof item.send_message === 'string',
+    refillReminder: item.refill_reminder === 'true',
+    refillDays: item.set_day_before_refill ? parseInt(item.set_day_before_refill) : 3,
+    refillDate: item.set_refill_date ? new Date(item.set_refill_date) : (item.reminder_date ? new Date(item.reminder_date) : new Date()),
+    startFromToday: item.start_from_today === 'true',
+    initialQuantity: item.current_quantity ? parseInt(item.current_quantity) : undefined,
+    dailyIntake: undefined, // Not present in API, can be set if needed
+  }));
+};
+
+// Helper to parse time string (e.g., '08:00') to Date object (today's date with that time)
+function parseTimeString(timeStr: string): Date {
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  const now = new Date();
+  now.setHours(hours, minutes, 0, 0);
+  return now;
+}
 
 const styles = StyleSheet.create({
   container: {

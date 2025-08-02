@@ -1,24 +1,46 @@
-import React from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { logout } from '../services/api'; // Import your logout function from the API service
-
-// Sample profile data (replace with actual data source in a real app)
-const profileData = {
-  name: 'John Doe',
-  email: 'john.doe@example.com',
-  phone: '+1 (555) 123-4567',
-  address: '123 Main St, Springfield, USA',
-  role: 'Parent',
-};
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { logout } from '../services/api';
 
 const FamilyMemberProfile: React.FC = () => {
   const navigation = useNavigation();
+  const [profileData, setProfileData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    address: '',
+    relation: '',
+  });
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        const userDetailsString = await AsyncStorage.getItem("userDetails");
+        if (userDetailsString) {
+          const userDetails = JSON.parse(userDetailsString);
+          setProfileData({
+            name: userDetails.name || 'not set',
+            email: userDetails.email || 'not set',
+            phone: userDetails.phone || 'not set',
+            address: userDetails.address || 'not set',
+            role: userDetails.relation || 'not set',
+          });
+        }
+      } catch (error) {
+        // Handle error if needed
+      }
+    };
+    fetchUserData();
+  }, []);
 
   const handleLogout = async () => {
-    await logout(); // Call your logout function from the API service
-    // Perform any logout logic here (e.g., clear auth token)
+    setLoading(true);
+    await logout();
+    setLoading(false);
     navigation.replace('LoginScreen');
   };
 
@@ -45,8 +67,12 @@ const FamilyMemberProfile: React.FC = () => {
         <Text style={styles.label}>Role:</Text>
         <Text style={styles.value}>{profileData.role}</Text>
       </View>
-      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-        <Text style={styles.logoutButtonText}>Logout</Text>
+      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} disabled={loading}>
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.logoutButtonText}>Logout</Text>
+        )}
       </TouchableOpacity>
     </SafeAreaView>
   );

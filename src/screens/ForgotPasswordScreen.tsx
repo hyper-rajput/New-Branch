@@ -11,11 +11,13 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import {forgotPasswordApi} from "../services/api"
+
+// Assume forgotPasswordApi is imported or defined somewhere
+// import { forgotPasswordApi } from "../api/auth"; // Example import
 
 const ForgotPasswordScreen = ({ navigation }) => {
   const [email, setEmail] = useState("");
-  const [verificationCode, setVerificationCode] = useState("");
-  const [isCodeSent, setIsCodeSent] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSendCode = async () => {
@@ -25,33 +27,16 @@ const ForgotPasswordScreen = ({ navigation }) => {
     }
     setLoading(true);
     try {
-      // Simulating API call to send verification code
-      // Replace with actual API call to your backend
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // Mock delay
-      setIsCodeSent(true);
-      Alert.alert("Success", "Verification code sent to your email.");
+      // Call the actual forgotPasswordApi
+      const response = await forgotPasswordApi(email);
+      Alert.alert(
+        "Success",
+        (typeof response === "string" ? response : JSON.stringify(response)) +
+          "\n\nIf you can't see the email, please check your spam or junk folder."
+      );
     } catch (error) {
-      Alert.alert("Error", "Failed to send verification code. Please try again.");
+      Alert.alert("Error", "Failed to send reset link. Please try again.");
       console.error("Send code error:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVerifyCode = async () => {
-    if (!verificationCode) {
-      Alert.alert("Error", "Please enter the verification code.");
-      return;
-    }
-    setLoading(true);
-    try {
-      // Simulating API call to verify code
-      // Replace with actual API call to your backend
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // Mock delay
-      navigation.replace("Dashboard");
-    } catch (error) {
-      Alert.alert("Error", "Invalid verification code. Please try again.");
-      console.error("Verify code error:", error);
     } finally {
       setLoading(false);
     }
@@ -72,41 +57,19 @@ const ForgotPasswordScreen = ({ navigation }) => {
           <View style={styles.innerContainer}>
             <Text style={styles.title}>Forgot Password</Text>
             <Text style={styles.subtitle}>
-              {isCodeSent
-                ? "Enter the verification code sent to your email."
-                : "Enter your email to receive a verification code."}
+              Enter your email to receive a reset link.
             </Text>
-
-            {!isCodeSent ? (
-              <>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Email Address"
-                  placeholderTextColor="#A0A0A0"
-                  keyboardType="email-address"
-                  value={email}
-                  onChangeText={setEmail}
-                />
-                <TouchableOpacity style={styles.button} onPress={handleSendCode}>
-                  <Text style={styles.buttonText}>Send Verification Code</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Verification Code"
-                  placeholderTextColor="#A0A0A0"
-                  keyboardType="numeric"
-                  value={verificationCode}
-                  onChangeText={setVerificationCode}
-                />
-                <TouchableOpacity style={styles.button} onPress={handleVerifyCode}>
-                  <Text style={styles.buttonText}>Verify Code</Text>
-                </TouchableOpacity>
-              </>
-            )}
-
+            <TextInput
+              style={styles.input}
+              placeholder="Email Address"
+              placeholderTextColor="#A0A0A0"
+              keyboardType="email-address"
+              value={email}
+              onChangeText={setEmail}
+            />
+            <TouchableOpacity style={styles.button} onPress={handleSendCode}>
+              <Text style={styles.buttonText}>Send Reset Link</Text>
+            </TouchableOpacity>
             <TouchableOpacity onPress={() => navigation.navigate("LoginScreen")}>
               <Text style={styles.backText}>
                 Back to <Text style={styles.highlight}>Login</Text>

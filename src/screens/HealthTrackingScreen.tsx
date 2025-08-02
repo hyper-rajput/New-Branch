@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import {saveMedicinesApi, saveHealthMetricsApi, GetHealthMetricsApi, GetMedicines, deleteMedicineApi} from '../services/api'; // Import GetMedicinesApi
-
+import FullScreenLoader from '../components/FullScreenLoader';
 
 // Custom Dropdown Component for Health Metrics
 const CustomDropdown = ({ label, value, options, onSelect }) => {
@@ -61,6 +61,7 @@ type HealthData = {
   const [dosage, setDosage] = useState("");
   const [healthMetric, setHealthMetric] = useState({ type: "Heart Rate", value: "" });
   const [healthData, setHealthData] = useState<HealthData[]>([]);
+  const [loaderVisible, setLoaderVisible] = useState(false);
 
   const metricOptions = ["Heart Rate", "Blood Pressure", "Glucose", "Weight", "Oxygen Level"];
   const resetForm = () => {
@@ -76,7 +77,7 @@ type HealthData = {
       ]);
       return;
     }
-
+    setLoaderVisible(true);
     const newMedicine = {
       id: `${medicineName.toLowerCase()}-${Date.now()}`,
       name: medicineName,
@@ -85,20 +86,16 @@ type HealthData = {
       dosage: `${dosage}mg`,
       timestamp: new Date().toLocaleString()
     };
-        // Call the API to save the new medicine
-          try {
-      // Call the API to save the new medicine
-      const apiResponse = await saveMedicinesApi([newMedicine]); // Send as an array
+    try {
+      const apiResponse = await saveMedicinesApi([newMedicine]);
       console.log("Medicine saved successfully:", apiResponse);
-
-      // If API call is successful, update local state
       setMedicines([...medicines, newMedicine]);
       Alert.alert("Success!", `${medicineName} has been added to your list and saved.`);
       resetForm();
     } catch (error) {
       console.error("Error adding medicine:", error);
-      // Alert is already handled by the API service, but you can add more specific logic here if needed
     } finally {
+      setLoaderVisible(false);
       Keyboard.dismiss();
     }
   };
@@ -113,7 +110,7 @@ useEffect(() => {
             id: item.id,
             type: item.metric,
             value: item.data,
-            timestamp: new Date(parseInt(item.timestamp) * 1000).toLocaleString()
+            timestamp: item.timestamp
           })));
         }
       } catch (error) {
@@ -148,22 +145,7 @@ useEffect(() => {
 
     fetchMedicines();
   }, []);
-  //  // Empty dependency array means this runs once on component mount
-  //   const updatedMedicines = [...medicines, newMedicine];
-  //   setMedicines(updatedMedicines);
-  //   Alert.alert("Success!", `${medicineName} has been added to your list.`, [
-  //     { text: "OK", style: "default" }
-  //   ]);
-  //   resetForm();
-  //   Keyboard.dismiss();
-  // };
 
-  // const resetForm = () => {
-  //   setMedicineName("");
-  //   setInitialQuantity("");
-  //   setDailyIntake("");
-  //   setDosage("");
-  // };
 
   const addHealthMetric = async () => {
     if (!healthMetric.value || isNaN(healthMetric.value)) {
@@ -172,44 +154,49 @@ useEffect(() => {
       ]);
       return;
     }
-
+    setLoaderVisible(true);
     const newMetric = {
       id: `${healthMetric.type.toLowerCase()}-${Date.now()}`,
       type: healthMetric.type,
       value: parseFloat(healthMetric.value),
       timestamp: new Date().toLocaleString(),
     };
-   await saveHealthMetricsApi([newMetric]); // Send as an array
+    try {
+      await saveHealthMetricsApi([newMetric]);
       Alert.alert("Health metric saved successfully");
       setHealthData([...healthData, newMetric]);
-
-    const abnormal = {
-      "Heart Rate": newMetric.value < 30 || newMetric.value > 200,
-      "Blood Pressure": newMetric.value < 80 || newMetric.value > 180,
-      Glucose: newMetric.value < 70 || newMetric.value > 200,
-      Weight: newMetric.value < 20 || newMetric.value > 300,
-      "Oxygen Level": newMetric.value < 80 || newMetric.value > 100,
-    };
-
-    if (abnormal[healthMetric.type]) {
-      Alert.alert("Warning!", `Your ${healthMetric.type} value seems unusual. Please consult your doctor.`, [
-        { text: "OK", style: "default" }
-      ]);
+      const abnormal = {
+        "Heart Rate": newMetric.value < 30 || newMetric.value > 200,
+        "Blood Pressure": newMetric.value < 80 || newMetric.value > 180,
+        Glucose: newMetric.value < 70 || newMetric.value > 200,
+        Weight: newMetric.value < 20 || newMetric.value > 300,
+        "Oxygen Level": newMetric.value < 80 || newMetric.value > 100,
+      };
+      if (abnormal[healthMetric.type]) {
+        Alert.alert("Warning!", `Your ${healthMetric.type} value seems unusual. Please consult your doctor.`, [
+          { text: "OK", style: "default" }
+        ]);
+      }
+      setHealthMetric({ type: "Heart Rate", value: "" });
+    } catch (error) {
+      console.error("Error saving health metric:", error);
+    } finally {
+      setLoaderVisible(false);
+      Keyboard.dismiss();
     }
-
-    setHealthMetric({ type: "Heart Rate", value: "" });
-    Keyboard.dismiss();
   };
 
- const deleteMedicine = (id) => {
+ const deleteMedicine = (id:any) => {
     Alert.alert("Delete Medicine", "Are you sure you want to remove this medicine?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
         onPress: async () => { // Make the onPress function async
           try {
+          setLoaderVisible(true);
             await deleteMedicineApi(id); // Call the delete API
             setMedicines(medicines.filter((m) => m.id !== id)); // Update local state on success
+            setLoaderVisible(false);
             Alert.alert("Success", "Medicine deleted successfully.");
           } catch (error) {
             console.error("Error deleting medicine:", error);
@@ -227,7 +214,7 @@ useEffect(() => {
       newMedicineFromHealth: {
         id: medicine.id,
         name: medicine.name,
-        dosage: `${medicine.dailyIntake} pill(s) of ${medicine.dosage}mg`,
+        dosage: `${medicine.dailyIntake} pill(s) of ${medicine.dosage}`,
         initialQuantity: medicine.initialQuantity,
         currentQuantity: medicine.currentQuantity,
         dailyIntake: medicine.dailyIntake,
@@ -251,6 +238,7 @@ useEffect(() => {
 
   return (
     <SafeAreaView style={styles.container}>
+      <FullScreenLoader visible={loaderVisible} />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
