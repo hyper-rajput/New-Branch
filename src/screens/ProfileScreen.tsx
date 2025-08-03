@@ -98,7 +98,7 @@ const ProfileScreen = ({ navigation }) => {
   };
 
   return (
-    <ScrollView contentContainerStyle={profileStyles.bgContainer}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={profileStyles.bgContainer}>
       {/* Back Button */}
       <View style={profileStyles.headerRow}>
         <TouchableOpacity onPress={() => navigation.navigate('Dashboard')} style={profileStyles.backButton}>
@@ -142,15 +142,12 @@ const ProfileScreen = ({ navigation }) => {
   );
 };
 
-
-
 const profileStyles = StyleSheet.create({
   bgContainer: {
-    flex: 1,
     backgroundColor: COLORS.background,
     paddingVertical: 0,
     alignItems: 'center',
-    paddingBottom: 30,
+    paddingBottom: 20, // Reduced padding for better content flow
   },
   headerRow: {
     width: '100%',

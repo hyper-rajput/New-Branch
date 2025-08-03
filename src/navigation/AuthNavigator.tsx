@@ -17,7 +17,10 @@ import FamilyMemberProfileSetup from '../screens/FamilyMemberProfileSetup';
 import FamilyAnalysis from '../screens/FamilyAnalysis';
 import MessagesScreen from '../screens/MessagesScreen'; // ✅ Make sure this exists and is a valid React component
 import FamilySchedule from '../screens/FamilySchedule';
-const Stack = createNativeStackNavigator();
+import ProfileSetupSummary from '../screens/ProfileSetupSummary';
+import { createStackNavigator } from '@react-navigation/stack';
+
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
 const AuthNavigator = () => {
   return (
@@ -26,7 +29,12 @@ const AuthNavigator = () => {
       <Stack.Screen name="LoginScreen" component={LoginScreen} />
       <Stack.Screen name="OtpScreen" component={OtpScreen} />
       <Stack.Screen name="SignUpScreen" component={SignUpScreen} />
-      <Stack.Screen name="ProfileSetupScreen" component={ProfileSetupScreen} />
+      <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
+              <Stack.Screen
+        name="ProfileSetupSummary"
+        component={ProfileSetupSummary}
+        options={{ headerShown: false }}
+      />
       <Stack.Screen name="Dashboard" component={DashboardScreen} />
       <Stack.Screen name="HealthTrackingScreen" component={HealthTrackingScreen} />
        <Stack.Screen name="FamilyMemberScreen" component={FamilyMemberScreen} />
@@ -44,3 +52,24 @@ const AuthNavigator = () => {
 };
 
 export default AuthNavigator;
+
+type RootStackParamList = {
+  SplashScreen: undefined;
+  LoginScreen: undefined;
+  OtpScreen: undefined;
+  SignUpScreen: undefined;
+  ProfileSetup: undefined;
+  ProfileSetupSummary: { formData: { [key: string]: string | string[] } };
+  Dashboard: undefined;
+  HealthTrackingScreen: undefined;
+  FamilyMemberScreen: undefined;
+  ProfileScreen: undefined;
+  MedicationReminder: undefined;
+  ForgotPasswordScreen: undefined;
+  FamilyDashboard: undefined;
+  FamilyAnalysis: undefined;
+  FamilyMemberProfile: undefined;
+  FamilySchedule: undefined;
+  FamilyMemberProfileSetup: undefined;
+  MessagesScreen: undefined;
+};

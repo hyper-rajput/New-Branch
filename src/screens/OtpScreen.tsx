@@ -86,7 +86,7 @@ const OtpScreen: React.FC<OtpScreenProps> = ({ route, navigation }) => {
     }
     // OTP Verification logic here
     Alert.alert('Success', `OTP Verified: ${finalOtp}`);
-    navigation.replace('Dashboard'); // Navigate to next screen
+    navigation.replace('ProfileSetup'); // Navigate to next screen
   };
 
   return (
