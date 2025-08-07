@@ -54,18 +54,17 @@ const steps = [
     required: true,
     options: [
       "Hindi",
+      "Odia",
       "Bengali",
       "Marathi",
       "Telugu",
       "Tamil",
       "Gujarati",
-      "Urdu",
-      "Kannada",
-      "Odia",
       "Malayalam",
+      "Kannada",
+      "Urdu",
       "Punjabi",
       "Assamese",
-      "Maithili",
     ],
     cardLayout: true,
   },
@@ -73,7 +72,9 @@ const steps = [
     key: "habitsToSkip",
     label: "Are there any habits you want to skip or leave?",
     required: false,
-    options: ["Smoking", "Alcohol", "Tobacco", "Chewing Paan", "None"],
+    options: [
+      "Smoking", "Alcohol", "Tobacco", "Chewing Paan", "Junk Food", "Sugary Drinks", "None"
+    ],
     multiSelect: true,
     cardLayout: true,
   },
@@ -81,7 +82,9 @@ const steps = [
     key: "allergy",
     label: "Do you have any allergies?",
     required: false,
-    options: ["Pollen", "Dust", "Certain Spices", "Milk Products", "Peanuts", "None"],
+    options: [
+      "Pollen", "Dust", "Certain Spices", "Milk Products", "Peanuts", "Seafood", "Eggs", "Gluten", "None"
+    ],
     multiSelect: true,
     cardLayout: true,
   },
@@ -89,7 +92,9 @@ const steps = [
     key: "medicalCondition",
     label: "Do you have any medical conditions?",
     required: false,
-    options: ["Diabetes", "Hypertension", "Arthritis", "Asthma", "Heart Disease", "None"],
+    options: [
+      "Diabetes", "Hypertension", "Arthritis", "Asthma", "Heart Disease", "Thyroid", "Obesity", "Cholesterol", "None"
+    ],
     multiSelect: true,
     cardLayout: true,
   },
@@ -97,7 +102,9 @@ const steps = [
     key: "interest",
     label: "What are your interests?",
     required: false,
-    options: ["Gardening", "Yoga", "Classical Music", "Cooking Indian Dishes", "Reading Indian Literature", "None"],
+    options: [
+      "Gardening", "Yoga", "Classical Music", "Cooking Indian Dishes", "Reading Indian Literature", "Painting", "Traveling", "Photography", "Meditation", "None"
+    ],
     multiSelect: true,
     cardLayout: true,
   },
@@ -106,19 +113,27 @@ const steps = [
 // Language to native script mapping
 const languageNativeMap: { [key: string]: string } = {
   Hindi: "हिंदी",
+  Odia: "ଓଡ଼ିଆ",
   Bengali: "বাংলা",
   Marathi: "मराठी",
   Telugu: "తెలుగు",
   Tamil: "தமிழ்",
   Gujarati: "ગુજરાતી",
-  Urdu: "اردو",
-  Kannada: "ಕನ್ನಡ",
-  Odia: "ଓଡ଼ିଆ",
   Malayalam: "മലയാളം",
+  Kannada: "ಕನ್ನಡ",
+  Urdu: "اردو",
   Punjabi: "ਪੰਜਾਬੀ",
   Assamese: "অসমীয়া",
-  Maithili: "मैथिली",
 };
+
+const MULTI_SELECT_OPTIONS = [
+  // 9 options + None for uniformity
+  ["Smoking", "Alcohol", "Tobacco", "Chewing Paan", "Junk Food", "Sugary Drinks", "Fast Food", "Caffeine", "None"],
+  ["Pollen", "Dust", "Certain Spices", "Milk Products", "Peanuts", "Seafood", "Eggs", "Gluten", "None"],
+  ["Diabetes", "Hypertension", "Arthritis", "Asthma", "Heart Disease", "Thyroid","Cholesterol", "Migraine", "None"],
+  ["Gardening", "Yoga", "Music", "Cooking", "Reading", "Painting", "Photography", "Meditation", "None"]
+];
+const MULTI_SELECT_KEYS = ["habitsToSkip", "allergy", "medicalCondition", "interest"];
 
 const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigation, route }) => {
   const { stepKey } = route.params || {};
@@ -139,6 +154,7 @@ const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigation, rou
     interest: "",
   });
   const [ageError, setAgeError] = useState<string | null>(null);
+  const [multiSelectError, setMultiSelectError] = useState<string | null>(null);
 
   console.log("Rendering step:", step, "Current key:", steps[step]?.key, "Form:", form);
 
@@ -159,13 +175,21 @@ const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigation, rou
   const canGoNext = current.required
     ? current.key === "age"
       ? !ageError && !!value
-      : Array.isArray(value)
-      ? value.length > 0
-      : !!(value && value.trim())
+      : current.multiSelect
+        ? Array.isArray(form[current.key]) && (form[current.key] as string[]).length > 0 && !(form[current.key] as string[]).includes("")
+        : Array.isArray(value)
+          ? value.length > 0
+          : !!(value && value.trim())
     : true;
 
   const handleNext = () => {
-    if (!canGoNext) return;
+    if (!canGoNext) {
+      if (current.multiSelect) {
+        setMultiSelectError("Please select at least one option before proceeding.");
+      }
+      return;
+    }
+    setMultiSelectError(null);
     if (isLast) navigation.replace("ProfileSetupSummary", { formData: form });
     else setStep((s) => s + 1);
   };
@@ -189,7 +213,7 @@ const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigation, rou
         setForm((f) => ({ ...f, [current.key]: newValues }));
       }
     }
-  };
+  };23
 
   const handleOtherInput = (text: string) => {
     setForm((f) => ({
@@ -217,12 +241,32 @@ const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigation, rou
     };
   }, []);
 
+  const isBigBoxLanguage = (language: string) => {
+    const bigBoxLanguages = ["Gujarati", "Malayalam", "Kannada", "Assamese"];
+    return bigBoxLanguages.includes(language);
+  };
+
+  const organizeLanguages = () => {
+    const smallBoxLanguages = ["Hindi", "Urdu", "Tamil", "Odia", "Punjabi"];
+    const bigBoxLanguages = ["Gujarati", "Malayalam", "Kannada", "Assamese", "Bengali", "Marathi", "Telugu"];
+
+    return [
+      ...smallBoxLanguages.slice(0, 4), // First 2 rows of small boxes
+      ...bigBoxLanguages, // 4 rows of larger boxes
+      ...smallBoxLanguages.slice(4), // Last row of small boxes
+    ];
+  };
+
+  const organizedLanguages = organizeLanguages();
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <MaterialIcons name="arrow-back-ios" size={24} color="#2B2B2B" />
-        </TouchableOpacity>
+        {!isFirst && (
+          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+            <MaterialIcons name="arrow-back-ios" size={24} color="#2B2B2B" />
+          </TouchableOpacity>
+        )}
       </View>
       <View style={styles.statusBar}>
         <View style={[styles.progressBar, { width: `${progress}%` }]} />
@@ -284,43 +328,92 @@ const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigation, rou
             current.key !== "age" &&
             current.key !== "bloodGroup" &&
             current.key !== "languagePreference" && (
-              <View style={styles.cardContainer}>
-                {current.options.map((option) => (
-                  <TouchableOpacity
-                    key={option}
-                    style={[
-                      styles.card,
-                      Array.isArray(form[current.key]) && (form[current.key] as string[]).includes(option) && styles.cardSelected,
-                    ]}
-                    onPress={() => handleSelect(option)}
-                  >
-                    <Text style={styles.cardText}>{option}</Text>
-                  </TouchableOpacity>
-                ))}
-                <View style={styles.inputWrapper}>
-                  <TextInput
-                    style={styles.input}
-                    placeholder={`Enter your ${current.key.replace(/([A-Z])/g, " $1").toLowerCase()}`}
-                    value={otherInputs[current.key] || ""}
-                    onChangeText={handleOtherInput}
-                    placeholderTextColor="#6B6B6B"
-                  />
+              <View>
+                <View style={styles.headerCard}>
+                  <MaterialIcons name="list" size={24} color="#4CAF50" style={styles.headerIcon} />
+                  <Text style={styles.headerText}>Choose your {current.key.replace(/([A-Z])/g, " $1").toLowerCase()}</Text>
+                </View>
+                <View style={styles.cardContainer}>
+                  {(() => {
+                    const options = MULTI_SELECT_OPTIONS[MULTI_SELECT_KEYS.indexOf(current.key)];
+                    const normalOptions = options.filter(opt => opt !== "None");
+                    const noneOption = options.find(opt => opt === "None");
+                    const rows = [];
+                    for (let i = 0; i < normalOptions.length; i += 2) {
+                      const rowOptions = normalOptions.slice(i, i + 2);
+                      rows.push(
+                        <View key={i} style={{ flexDirection: "row", justifyContent: "space-between", width: "100%" }}>
+                          {rowOptions.map(option => {
+                            const isBig = option.length > 14;
+                            return (
+                              <TouchableOpacity
+                                key={option}
+                                style={[
+                                  styles.card,
+                                  Array.isArray(form[current.key]) && (form[current.key] as string[]).includes(option) && styles.cardSelected,
+                                  { width: isBig ? "90%" : "45%", height: 60, flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 8 },
+                                  isBig && { marginLeft: "5%" }
+                                ]}
+                                onPress={() => handleSelect(option)}
+                              >
+                                <MaterialIcons
+                                  name={Array.isArray(form[current.key]) && (form[current.key] as string[]).includes(option) ? "check-box" : "check-box-outline-blank"}
+                                  size={20}
+                                  color={Array.isArray(form[current.key]) && (form[current.key] as string[]).includes(option) ? "#4CAF50" : "#6B6B6B"}
+                                  style={[styles.radioIcon, { marginRight: 8 }]} // left most
+                                />
+                                <Text style={{ textAlign: "center", flex: 1 }}>{option}</Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      );
+                    }
+                    // None option at bottom row, centered
+                    if (noneOption) {
+                      rows.push(
+                        <View key="none-row" style={{ width: "100%", alignItems: "center", marginTop: 8 }}>
+                          <TouchableOpacity
+                            style={[
+                              styles.card,
+                              Array.isArray(form[current.key]) && (form[current.key] as string[]).includes(noneOption) && styles.cardSelected,
+                              { width: "60%", height: 60, flexDirection: "row", alignItems: "center", justifyContent: "center" }
+                            ]}
+                            onPress={() => handleSelect(noneOption)}
+                          >
+                            <MaterialIcons
+                              name={Array.isArray(form[current.key]) && (form[current.key] as string[]).includes(noneOption) ? "check-box" : "check-box-outline-blank"}
+                              size={20}
+                              color={Array.isArray(form[current.key]) && (form[current.key] as string[]).includes(noneOption) ? "#4CAF50" : "#6B6B6B"}
+                              style={[styles.radioIcon, { marginRight: 8 }]} // left most
+                            />
+                            <Text style={{ textAlign: "center", flex: 1 }}>{noneOption}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    }
+                    return rows;
+                  })()}
                 </View>
               </View>
             )}
           {current.key === "languagePreference" && current.options && current.options.length > 0 && (
             <View>
-              {/* Separate styled header card */}
               <View style={styles.headerCard}>
                 <MaterialIcons name="language" size={24} color="#4CAF50" style={styles.headerIcon} />
                 <Text style={styles.headerText}>Choose your preferred language</Text>
               </View>
-              {/* Language selection cards */}
               <View style={styles.cardContainer}>
-                {current.options.map((option) => (
+                {organizedLanguages.map((option, index) => (
                   <TouchableOpacity
                     key={option}
-                    style={[styles.languageCard, form["languagePreference"] === option && styles.cardSelected]}
+                    style={[
+                      styles.languageCard,
+                      form["languagePreference"] === option && styles.cardSelected,
+                      { height: 60 }, // Uniform height for all boxes
+                      isBigBoxLanguage(option) && { width: "90%", justifyContent: "center" },
+                      !isBigBoxLanguage(option) && { width: "45%" },
+                    ]}
                     onPress={() => handleSelect(option)}
                   >
                     <MaterialIcons
@@ -329,7 +422,7 @@ const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigation, rou
                       color={form["languagePreference"] === option ? "#4CAF50" : "#6B6B6B"}
                       style={styles.radioIcon}
                     />
-                    <Text style={styles.languageText}>
+                    <Text style={[styles.languageText, isBigBoxLanguage(option) && { textAlign: "center" }]}>
                       {option} - {languageNativeMap[option]}
                     </Text>
                   </TouchableOpacity>
@@ -339,6 +432,9 @@ const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigation, rou
           )}
         </ScrollView>
         <View style={[styles.bottomNav, inputFocused && styles.bottomNavFocused]}>
+          {multiSelectError && (
+            <Text style={{ color: "red", fontSize: 15, marginBottom: 8, textAlign: "center" }}>{multiSelectError}</Text>
+          )}
           <TouchableOpacity
             style={[styles.nextButton, !canGoNext && styles.nextButtonDisabled]}
             onPress={handleNext}
@@ -388,7 +484,7 @@ const styles = StyleSheet.create({
   cardContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "center",
+    justifyContent: "space-between",
     marginVertical: 8,
     marginHorizontal: 12,
     padding: 10,
@@ -414,7 +510,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     margin: 6,
-    width: "45%", // Wider cards for text and icon
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-start",
@@ -498,7 +593,23 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
   },
-  radioIcon: { marginRight: 8 }
+  radioIcon: { marginRight: 8 },
+  addMoreCard: {
+    backgroundColor: "#F5F5F5",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    margin: 6,
+    width: "45%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  }
 });
 
 export default ProfileSetupScreen;

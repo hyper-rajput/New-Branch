@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -22,9 +22,25 @@ type ProfileSetupSummaryProps = {
 const ProfileSetupSummary: React.FC<ProfileSetupSummaryProps> = ({ navigation, route }) => {
   const { formData } = route.params;
   const [editableData, setEditableData] = React.useState(formData);
+  const [editingKey, setEditingKey] = React.useState<string | null>(null);
+
+  const validateAge = (age: string) => {
+    const ageNum = parseInt(age, 10);
+    if (isNaN(ageNum)) return "Please enter a valid age.";
+    if (ageNum < 13 || ageNum > 100) return "Age must be between 13 and 100.";
+    return null;
+  };
 
   const handleEdit = (key: string, newValue: string) => {
+    if (key === 'age') {
+      const error = validateAge(newValue);
+      if (error) {
+        Alert.alert('Validation Error', error);
+        return;
+      }
+    }
     setEditableData((prev) => ({ ...prev, [key]: newValue }));
+    setEditingKey(null);
   };
 
   return (
@@ -36,22 +52,29 @@ const ProfileSetupSummary: React.FC<ProfileSetupSummaryProps> = ({ navigation, r
         <Text style={styles.title}>Profile Summary</Text>
       </View>
 
-      <ScrollView style={styles.scrollContainer}>
+      <ScrollView style={styles.scrollContainer} keyboardShouldPersistTaps="handled">
         {Object.entries(editableData).map(([key, value]) => (
           <View key={key} style={styles.summaryItem}>
             <View style={styles.itemRow}>
               <Text style={styles.itemKey}>{key.replace(/([A-Z])/g, ' $1').toUpperCase()}</Text>
               <TouchableOpacity
-                onPress={() => navigation.navigate('ProfileSetup', { stepKey: key, returnToSummary: true })}
+                onPress={() => setEditingKey(key)}
               >
                 <MaterialIcons name="edit" size={20} color="#F47C4B" />
               </TouchableOpacity>
             </View>
-            <TextInput
-              style={styles.itemValue}
-              value={Array.isArray(value) ? value.join(', ') : value}
-              onChangeText={(text) => handleEdit(key, text)}
-            />
+            {editingKey === key ? (
+              <TextInput
+                style={styles.itemValue}
+                value={Array.isArray(value) ? value.join(', ') : value}
+                onChangeText={(text) => handleEdit(key, text)}
+                placeholder={`Edit your ${key.replace(/([A-Z])/g, ' $1').toLowerCase()}`}
+                placeholderTextColor="#6B6B6B"
+                keyboardType={key === 'age' ? 'numeric' : 'default'}
+              />
+            ) : (
+              <Text style={styles.itemValue}>{Array.isArray(value) ? value.join(', ') : value}</Text>
+            )}
           </View>
         ))}
       </ScrollView>
@@ -71,7 +94,7 @@ const ProfileSetupSummary: React.FC<ProfileSetupSummaryProps> = ({ navigation, r
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFF7E3',
+    backgroundColor: '#4CAF50',
   },
   scrollContainer: {
     flex: 1,
@@ -128,6 +151,11 @@ const styles = StyleSheet.create({
   itemValue: {
     color: '#6B6B6B',
     fontSize: 16,
+  },
+  errorText: {
+    color: 'red',
+    fontSize: 14,
+    marginTop: 4,
   },
   bottomNav: {
     alignItems: 'center',
