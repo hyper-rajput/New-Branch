@@ -13,6 +13,7 @@ import {
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { Image, Dimensions } from "react-native";
 import LinearGradient from 'react-native-linear-gradient';
+import auth from '@react-native-firebase/auth';
 
 
 const LoginScreen = ({ navigation }) => {
@@ -20,18 +21,37 @@ const LoginScreen = ({ navigation }) => {
 
   const [error, setError] = useState("");
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (!/^\d{10}$/.test(mobile)) {
       setError("Please enter a valid 10-digit mobile number.");
       return;
     }
     setError("");
-    navigation.navigate("OtpScreen", { mobile, redirectTo: "FamilyDashboard" });
+    try {
+      const confirmationResult = await auth().signInWithPhoneNumber(`+91${mobile}`);
+      setConfirmation(confirmationResult);
+      navigation.navigate("OtpScreen", { mobile, confirmation: confirmationResult });
+    } catch (error) {
+      setError("Failed to send OTP. Please try again.");
+    }
   };
 
   const handleFamilyLogin = () => {
     navigation.navigate("OtpScreen", { redirectTo: "FamilyDashboard" });
   };
+  const [phoneNumber, setPhoneNumber] = useState('');
+const [confirmation, setConfirmation] = useState(null);
+
+const signInWithPhoneNumber = async (number) => {
+  try {
+    const confirmationResult = await auth().signInWithPhoneNumber(number);
+    setConfirmation(confirmationResult);
+    // You can now show the OTP input field to the user
+  } catch (error) {
+    // Handle errors, e.g., invalid phone number
+    console.error(error);
+  }
+};
 
   const { width } = Dimensions.get('window');
   return (
@@ -107,7 +127,7 @@ const LoginScreen = ({ navigation }) => {
           <Text style={styles.skipLoginButtonText}>Go for Family Login</Text>
         </TouchableOpacity>
       </View>
-      <View style={[styles.footer, { marginBottom: Platform.OS === 'ios' ? 8 : 4, width: '100%' }]}> 
+      <View style={[styles.footer, { marginBottom: Platform.OS === 'ios' ? 8 : 4, width: '10%' }]}> 
         <Text style={styles.footerText}>
           By continuing, you agree to our <Text style={styles.link}>Terms of Service</Text> & <Text style={styles.link}>Privacy policy</Text>
         </Text>

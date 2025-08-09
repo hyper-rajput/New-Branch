@@ -1,4 +1,4 @@
-package com.voice2
+package zupki.com.company
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate

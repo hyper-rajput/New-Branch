@@ -2,26 +2,19 @@ import React, { useEffect } from "react";
 import { View, Text, StyleSheet, SafeAreaView,Alert } from "react-native";
 import { checkLoginStatus, fetchAndStoreUserDetails } from "../services/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-
+import auth from '@react-native-firebase/auth';
+import {getAuthTokens} from "../services/api";
 const SplashScreen = ({ navigation }) => {
   useEffect(() => {
-    const navigateToLogin = async () => {
-      try {
-        const isLoggedIn = await checkLoginStatus();
-
-        if (isLoggedIn) {
-          const account_type:any = await AsyncStorage.getItem('account_type');
-          navigation.replace(account_type === 'family' ? "FamilyDashboard":"Dashboard");
-        } else {
-          navigation.replace("LoginScreen");
-        }
-      } catch (error) {
+    getAuthTokens();
+    const unsubscribe = auth().onAuthStateChanged((user) => {
+      if (user) {
+        navigation.replace("Dashboard");
+      } else {
         navigation.replace("LoginScreen");
       }
-    };
-
-    const timer = setTimeout(navigateToLogin, 500);
-    return () => clearTimeout(timer);
+    });
+    return unsubscribe;
   }, [navigation]);
 
   return (

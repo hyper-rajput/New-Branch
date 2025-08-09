@@ -18,6 +18,7 @@ import FamilyAnalysis from '../screens/FamilyAnalysis';
 import MessagesScreen from '../screens/MessagesScreen'; // ✅ Make sure this exists and is a valid React component
 import FamilySchedule from '../screens/FamilySchedule';
 import ProfileSetupSummary from '../screens/ProfileSetupSummary';
+import TaskReminderScreen from '../screens/TaskReminderScreen';
 import { createStackNavigator } from '@react-navigation/stack';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -47,6 +48,7 @@ const AuthNavigator = () => {
         <Stack.Screen name='FamilySchedule' component={FamilySchedule} />
         <Stack.Screen name="FamilyMemberProfileSetup" component={FamilyMemberProfileSetup} />
         <Stack.Screen name="MessagesScreen" component={MessagesScreen} />
+      <Stack.Screen name="TaskReminderScreen" component={TaskReminderScreen} />
     </Stack.Navigator>
   );
 };
@@ -72,4 +74,5 @@ type RootStackParamList = {
   FamilySchedule: undefined;
   FamilyMemberProfileSetup: undefined;
   MessagesScreen: undefined;
+  TaskReminderScreen: undefined;
 };

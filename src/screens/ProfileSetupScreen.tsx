@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { BackHandler } from "react-native";
 import {
   View,
   Text,
@@ -10,9 +11,12 @@ import {
   Platform,
   KeyboardAvoidingView,
   KeyboardTypeOptions,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialIcons from "react-native-vector-icons/MaterialIcons";
+import { saveUserDetails } from "../services/api";
 
 type ProfileSetupScreenProps = {
   navigation: any;
@@ -182,6 +186,36 @@ const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigation, rou
           : !!(value && value.trim())
     : true;
 
+  const [loading, setLoading] = useState(false);
+
+  const handleFinish = () => {
+    Alert.alert(
+      "Save Profile",
+      "Are you sure you want to save your profile details?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Save",
+          onPress: async () => {
+            setLoading(true);
+            try {
+              await saveUserDetails(form);
+              Alert.alert("Success", "Profile details saved successfully!");
+              navigation.replace("Dashboard");
+            } catch (error) {
+              Alert.alert("Error", "Failed to save profile details. Please try again.");
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleNext = () => {
     if (!canGoNext) {
       if (current.multiSelect) {
@@ -190,13 +224,20 @@ const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigation, rou
       return;
     }
     setMultiSelectError(null);
-    if (isLast) navigation.replace("ProfileSetupSummary", { formData: form });
-    else setStep((s) => s + 1);
+    if (isLast) {
+      handleFinish();
+    } else {
+      setStep((s) => s + 1);
+    }
   };
 
   const handleBack = () => {
-    if (isFirst) navigation.goBack();
-    else setStep((s) => s - 1);
+    if (isFirst) {
+      // Prevent navigation back from first screen (do nothing)
+      return;
+    } else {
+      setStep((s) => s - 1);
+    }
   };
 
   const handleSelect = (option: string) => {
@@ -235,11 +276,24 @@ const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigation, rou
   useEffect(() => {
     const showListener = Keyboard.addListener("keyboardDidShow", () => setInputFocused(true));
     const hideListener = Keyboard.addListener("keyboardDidHide", () => setInputFocused(false));
+
+    const onBackPress = () => {
+      if (step === 0) {
+        // Allow default behavior (exit app)
+        return false;
+      } else {
+        setStep((s) => s - 1);
+        return true;
+      }
+    };
+    const backHandlerSub = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+
     return () => {
       showListener.remove();
       hideListener.remove();
+      backHandlerSub.remove();
     };
-  }, []);
+  }, [step]);
 
   const isBigBoxLanguage = (language: string) => {
     const bigBoxLanguages = ["Gujarati", "Malayalam", "Kannada", "Assamese"];
@@ -362,7 +416,7 @@ const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigation, rou
                                   color={Array.isArray(form[current.key]) && (form[current.key] as string[]).includes(option) ? "#4CAF50" : "#6B6B6B"}
                                   style={[styles.radioIcon, { marginRight: 8 }]} // left most
                                 />
-                                <Text style={{ textAlign: "center", flex: 1 }}>{option}</Text>
+                                <Text style={{ textAlign: "center", flex: 1, color: "#2B2B2B" }}>{option}</Text>
                               </TouchableOpacity>
                             );
                           })}
@@ -387,7 +441,7 @@ const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigation, rou
                               color={Array.isArray(form[current.key]) && (form[current.key] as string[]).includes(noneOption) ? "#4CAF50" : "#6B6B6B"}
                               style={[styles.radioIcon, { marginRight: 8 }]} // left most
                             />
-                            <Text style={{ textAlign: "center", flex: 1 }}>{noneOption}</Text>
+                            <Text style={{ textAlign: "center", flex: 1, color: "#2B2B2B" }}>{noneOption}</Text>
                           </TouchableOpacity>
                         </View>
                       );
@@ -438,9 +492,13 @@ const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ navigation, rou
           <TouchableOpacity
             style={[styles.nextButton, !canGoNext && styles.nextButtonDisabled]}
             onPress={handleNext}
-            disabled={!canGoNext}
+            disabled={!canGoNext || loading}
           >
-            <Text style={styles.nextButtonText}>{isLast ? "Finish" : "Next"}</Text>
+            {loading ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <Text style={styles.nextButtonText}>{isLast ? "Finish" : "Next"}</Text>
+            )}
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

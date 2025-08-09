@@ -1,10 +1,10 @@
 import axios from "axios";
 import EncryptedStorage from 'react-native-encrypted-storage';
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import AsyncStorage from "@react-native-async-storage/async-storage"
 import { Alert } from 'react-native';
 import messaging from '@react-native-firebase/messaging';
-
-const BASE_URL = "http://lumia-env.eba-smvczc8e.us-east-1.elasticbeanstalk.com";
+import auth from '@react-native-firebase/auth';
+const BASE_URL = "https://zupkiai.onrender.com";
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -28,23 +28,29 @@ const saveAuthTokens = async ({ idToken, refreshToken, expiresIn }) => {
 };
 
 // Helper to get auth tokens
-const getAuthTokens = async () => {
+export const getAuthTokens = async () => {
+  const currentUser = auth().currentUser;
+  if (!currentUser) {
+    throw new Error('No authenticated user found.');
+  }
   try {
-    const tokens = await EncryptedStorage.getItem("authTokens");
-    return tokens ? JSON.parse(tokens) : null;
+    // Get the current ID token. The SDK will automatically refresh it if needed.
+    const idToken = await currentUser.getIdToken();
+    console.log("Current ID Token:", idToken);
+    return { idToken };
   } catch (error) {
-    console.error("Failed to retrieve auth tokens:", error);
-    return null;
+    console.error('Failed to get ID token or fetch:', error);
+    throw error;
   }
 };
 
 // Helper to remove auth tokens
 const removeAuthTokens = async () => {
   try {
-    await EncryptedStorage.removeItem("authTokens");
-    //console.log("Auth tokens removed.");
+    await auth().signOut();
+    //console.log("Auth tokens removed and user signed out from Firebase.");
   } catch (error) {
-    console.error("Failed to remove auth tokens:", error);
+    console.error("Failed to remove auth tokens or sign out from Firebase:", error);
   }
 };
 
@@ -295,19 +301,20 @@ export const saveUserDetails = async (profileData) => {
     const cleanedProfileData = Object.fromEntries(
       Object.entries(profileData).filter(([_, value]) => value !== undefined && value !== null)
     );
+    Alert.alert("Profile Data", JSON.stringify(cleanedProfileData, null, 2));
 
-    try {
-      const response = await api.post("/user-details", {
-        idToken,
-        ...cleanedProfileData
-      });
-      //console.log("User details saved response:", response.data);
-      return response.data;
-    } catch (err) {
-      const errorMessage = extractApiErrorMessage(err);
-      Alert.alert("Save Details Failed", errorMessage);
-      throw new Error(errorMessage);
-    }
+    // try {
+    //   const response = await api.post("/user-details", {
+    //     idToken,
+    //     ...cleanedProfileData
+    //   });
+    //   //console.log("User details saved response:", response.data);
+    //   return response.data;
+    // } catch (err) {
+    //   const errorMessage = extractApiErrorMessage(err);
+    //   Alert.alert("Save Details Failed", errorMessage);
+    //   throw new Error(errorMessage);
+    // }
 };
 
 export const fetchAndStoreUserDetails = async () => {
@@ -571,14 +578,14 @@ export const searchFamilyApi = async (uid) => {
       throw new Error("ID token not available.");
     }
 
-const response = await api.post("/search-child", { idToken: idToken, child_id:uid }, {
+    const response = await api.post("/search-user", { target_id:uid }, {
       headers: {
         "Content-Type": "application/json",
       },
     });
 
     if (response.status === 200) {
-      return response.data.data; // Return data on success
+     return response.data.data; // Return data on success
     } else {
       // Handle other successful statuses if applicable (e.g., 204 No Content)
       Alert.alert("Search Failed", `Server responded with status: ${response.status}.`);
@@ -599,7 +606,7 @@ export const sendRequestApi = async (uid) => {
       throw new Error("ID token not available.");
     }
 
-const response = await api.post("/request-child-link", { idToken: idToken, child_id:uid }, {
+    const response = await api.post("/request-uid-link", { idToken: idToken, target_id:uid }, {
       headers: {
         "Content-Type": "application/json",
       },
@@ -627,7 +634,7 @@ export const fetchPendingRequestchildApi = async () => {
       throw new Error("ID token not available.");
     }
 
-const response = await api.post("/fetch-pending-requests", { idToken: idToken }, {
+    const response = await api.post("/fetch-pending-requests", { idToken: idToken }, {
       headers: {
         "Content-Type": "application/json",
       },
@@ -655,7 +662,7 @@ export const handlePendingRequestchildApi = async (id,action) => {
       Alert.alert("Authentication Error", "Could not retrieve user session. Please log in again.");
       throw new Error("ID token not available.");
     }
-const response = await api.post("/handle-parent-request", { idToken: idToken, parent_id:id, action:action }, {
+    const response = await api.post("/handle-request", { idToken: idToken, target_id:id, action:action }, {
       headers: {
         "Content-Type": "application/json",
       },
@@ -933,6 +940,31 @@ export const forgotPasswordApi = async (email) => {
     } catch (error) {
       const errorMessage = error.response?.data?.message || error.message || "An unknown error occurred.";
       Alert.alert("API call error (unlinkChildApi):", errorMessage);
+      throw error;
+    }
+  };
+  export const getCustomUidApi = async (uid) => {
+    try {
+      const payload = {
+        firebase_uid: uid
+      };
+
+      const response = await api.post("/get-custom-uid", payload, {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (response.status === 200 && response.data) {
+        return response.data;
+      } else {
+        const errorMessage = response.data?.message || "Failed to get custom UID.";
+        Alert.alert("Get Custom UID Error", errorMessage);
+        throw new Error(errorMessage);
+      }
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || error.message || "An unknown error occurred.";
+      Alert.alert("API call error (getCustomUidApi):", errorMessage);
       throw error;
     }
   };

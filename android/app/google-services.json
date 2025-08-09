@@ -1,21 +1,22 @@
 {
   "project_info": {
-    "project_number": "591478914450",
-    "project_id": "lumia-87c22",
-    "storage_bucket": "lumia-87c22.firebasestorage.app"
+    "project_number": "383052548096",
+    "firebase_url": "https://zupki-ff2d1-default-rtdb.firebaseio.com",
+    "project_id": "zupki-ff2d1",
+    "storage_bucket": "zupki-ff2d1.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:591478914450:android:8ef7c45e0225570011554b",
+        "mobilesdk_app_id": "1:383052548096:android:514da4e6c2a349e48e30e5",
         "android_client_info": {
-          "package_name": "com.voice2"
+          "package_name": "zupki.com.company"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyAKSTPFruaRm5CYk3NSjIXvNnRe6QHCVQI"
+          "current_key": "AIzaSyCRJugz0LE59KGuxSCmkorEH4tV0PKMrZc"
         }
       ],
       "services": {

@@ -10,19 +10,23 @@ import {
   Alert,
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
-
+import { getCustomUidApi } from '../services/api'; // Adjust the import path as necessary
 type OtpScreenProps = {
-  route: { params?: { mobile?: string } };
+  route: { params?: { mobile?: string; confirmation?: any } };
   navigation: any;
 };
 
 const OtpScreen: React.FC<OtpScreenProps> = ({ route, navigation }) => {
   const mobile = route?.params?.mobile || '6203734467';
-  const [otp, setOtp] = useState(['', '', '', '']);
+  const confirmation = route?.params?.confirmation;
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [timer, setTimer] = useState(30);
   const [canResend, setCanResend] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const inputRefs = [
+    useRef<TextInput>(null),
+    useRef<TextInput>(null),
     useRef<TextInput>(null),
     useRef<TextInput>(null),
     useRef<TextInput>(null),
@@ -51,7 +55,7 @@ const OtpScreen: React.FC<OtpScreenProps> = ({ route, navigation }) => {
       const newOtp = [...otp];
       newOtp[idx] = value;
       setOtp(newOtp);
-      if (value && idx < 3) {
+      if (value && idx < 5) {
         inputRefs[idx + 1].current?.focus();
       } else if (!value && idx > 0) {
         inputRefs[idx - 1].current?.focus();
@@ -61,7 +65,7 @@ const OtpScreen: React.FC<OtpScreenProps> = ({ route, navigation }) => {
 
   const handleResend = () => {
     Alert.alert('OTP Sent', `A new OTP has been sent to +91 ${mobile}`);
-    setOtp(['', '', '', '']);
+    setOtp(['', '', '', '', '', '']);
     inputRefs[0].current?.focus();
     setCanResend(false);
     setTimer(30);
@@ -78,15 +82,40 @@ const OtpScreen: React.FC<OtpScreenProps> = ({ route, navigation }) => {
     }, 1000);
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     const finalOtp = otp.join('');
-    if (finalOtp.length !== 4) {
-      Alert.alert('Error', 'Please enter a valid 4-digit OTP');
+    if (finalOtp.length !== 6) {
+      Alert.alert('Error', 'Please enter a valid 6-digit OTP');
       return;
     }
-    // OTP Verification logic here
-    Alert.alert('Success', `OTP Verified: ${finalOtp}`);
-    navigation.replace('ProfileSetup'); // Navigate to next screen
+    if (!confirmation) {
+      Alert.alert('Error', 'Confirmation object missing. Please try again.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await confirmation.confirm(finalOtp);
+      // Check if user is new
+      const isNewUser = result?.additionalUserInfo?.isNewUser;
+      const uid = result?.user?.uid;
+      Alert.alert('Success', 'OTP Verified!');
+      if (isNewUser) {
+        // Call getCustomUidApi with uid
+        try {
+          await getCustomUidApi(uid);
+        } catch (apiError) {
+          console.error('getCustomUidApi error:', apiError);
+        }
+        navigation.replace('ProfileSetup');
+      } else {
+        navigation.replace('Dashboard');
+      }
+    } catch (error) {
+      console.error('Invalid code.', error);
+      Alert.alert('Error', 'Invalid OTP. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -108,17 +137,18 @@ const OtpScreen: React.FC<OtpScreenProps> = ({ route, navigation }) => {
 
       {/* OTP Boxes */}
       <View style={styles.otpRow}>
-        {[0, 1, 2, 3].map((idx) => (
-          <TextInput
-            key={idx}
-            ref={inputRefs[idx]}
-            style={styles.otpInput}
-            keyboardType="number-pad"
-            maxLength={1}
-            value={otp[idx]}
-            onChangeText={(val) => handleOtpChange(val, idx)}
-            autoFocus={idx === 0}
-          />
+        {[0, 1, 2, 3, 4, 5].map((idx) => (
+          <React.Fragment key={idx}>
+            <TextInput
+              ref={inputRefs[idx]}
+              style={styles.otpInput}
+              keyboardType="number-pad"
+              maxLength={1}
+              value={otp[idx]}
+              onChangeText={(val) => handleOtpChange(val, idx)}
+              autoFocus={idx === 0}
+            />
+          </React.Fragment>
         ))}
       </View>
 
@@ -132,8 +162,8 @@ const OtpScreen: React.FC<OtpScreenProps> = ({ route, navigation }) => {
       )}
 
       {/* Continue Button */}
-      <TouchableOpacity style={styles.continueButton} onPress={handleContinue}>
-        <Text style={styles.continueButtonText}>Continue</Text>
+      <TouchableOpacity style={styles.continueButton} onPress={handleContinue} disabled={loading}>
+        <Text style={styles.continueButtonText}>{loading ? 'Verifying...' : 'Continue'}</Text>
       </TouchableOpacity>
     </KeyboardAvoidingView>
   );
@@ -182,13 +212,13 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   otpInput: {
-    width: 55,
-    height: 55,
-    borderWidth: 1.5,
+    width: 38,
+    height: 48,
+    borderWidth: 1.2,
     borderColor: '#B0B0B0',
-    borderRadius: 10,
-    marginHorizontal: 10,
-    fontSize: 22,
+    borderRadius: 8,
+    marginHorizontal: 5,
+    fontSize: 20,
     textAlign: 'center',
     color: '#222',
     backgroundColor: '#fff',

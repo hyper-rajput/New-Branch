@@ -16,10 +16,10 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace "com.voice2"
+    namespace "zupki.com.company"
 
     defaultConfig {
-        applicationId "com.voice2"
+        applicationId "zupki.com.company"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
@@ -58,4 +58,5 @@ dependencies {
 
     // ✅ react-native-vector-icons
     implementation project(':react-native-vector-icons')
+    
 }

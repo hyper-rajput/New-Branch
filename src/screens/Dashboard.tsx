@@ -1,27 +1,27 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
-import { View, Text, StyleSheet, Alert, TouchableOpacity, FlatList, Dimensions, Platform, Image, BackHandler } from "react-native";
+import React, { useEffect, useState, useCallback } from "react";
+import { View, Text, StyleSheet, Alert, TouchableOpacity, FlatList, Dimensions, Platform, BackHandler } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ActivityIndicator } from "react-native";
 import Voice from "@react-native-community/voice";
 import Tts from 'react-native-tts';
-import EncryptedStorage from 'react-native-encrypted-storage';
 import {initializeNotifications} from '../services/NotificationService';
 import {fetchAndStoreUserDetails,generateTodoApi, getWeatherApi} from '../services/api';
 import { useFocusEffect } from '@react-navigation/native';
 import Geolocation from 'react-native-geolocation-service';
 const { PermissionsAndroid } = require('react-native');
+import { getAuthTokens } from '../services/api'; // Adjust the import path as necessary
 
-const Dashboard = ({ navigation, remoteMessage  }) => {
+const Dashboard = ({ navigation  }) => {
   const [lastFeedbackTime, setLastFeedbackTime] = useState(null);
   const [proactivePrompt, setProactivePrompt] = useState(null);
   const [isListening, setIsListening] = useState(false);
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
   const [recognizedText, setRecognizedText] = useState("");
 
-  const [Name, setName] = useState("Hey, Deepa!");  // Hardcoded for design match
-  const VOICE_ASSISTANT_API_URL = "http://lumia-env.eba-smvczc8e.us-east-1.elasticbeanstalk.com/proactive-talk"; // EXAMPLE URL
+  const [Name, setName] = useState("Hey, User");  // Hardcoded for design match
+  const VOICE_ASSISTANT_API_URL = "https://zupkiai.onrender.com/proactive-talk"; // EXAMPLE URL
   
   useEffect(() => {
     fetchAndStoreUserDetails();
@@ -66,11 +66,11 @@ const Dashboard = ({ navigation, remoteMessage  }) => {
     initializeAppData();
   }, []); // Empty dependency array ensures this effect runs only once on mount
 
-  useEffect(() => {
-    if (remoteMessage){
-      sendVoiceCommandToBackend(`Ask user-,${remoteMessage}`)
-    }
-  }, [remoteMessage]);
+  // useEffect(() => {
+  //   if (remoteMessage){
+  //     sendVoiceCommandToBackend(`Ask user-,${remoteMessage}`)
+  //   }
+  // }, [remoteMessage]);
 
 
   // Initialize TTS
@@ -233,17 +233,14 @@ const Dashboard = ({ navigation, remoteMessage  }) => {
   // Function to send voice command to backend and handle response
   const sendVoiceCommandToBackend = async (command) => {
     setIsProcessingVoice(true);
+    console.log("Sending command to backend:", command);
+      const tokens = await getAuthTokens();
+      const idToken = tokens?.idToken;
 
-    const tokens = await EncryptedStorage.getItem("authTokens");
-    let idToken = null;
-    if (tokens) {
-      try {
-        const parsedTokens = JSON.parse(tokens);
-        idToken = parsedTokens.idToken;
-      } catch (e) {
-        console.error("Failed to parse authTokens from EncryptedStorage", e);
+      if (!idToken) {
+        Alert.alert("Authentication Error", "Could not retrieve user session. Please log in again.");
+        throw new Error("ID token not available.");
       }
-    }
 
     try {
       const response = await fetch(VOICE_ASSISTANT_API_URL, {
@@ -256,6 +253,7 @@ const Dashboard = ({ navigation, remoteMessage  }) => {
           idToken:idToken
         }),
       });
+      console.log("Backend response status:", response.status);
 
       if (!response.ok) {
         let errorDetail = `HTTP error! status: ${response.status}`;
@@ -507,72 +505,58 @@ const Dashboard = ({ navigation, remoteMessage  }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Top bar with logo and app name */}
-      <View style={styles.topBar}>
-        <View style={{flex: 1}} />
-        <View style={styles.logoRow}>
+      {/* Top bar with logo and small profile button */}
+      <View style={styles.topBarNew}>
+        <TouchableOpacity style={styles.profileButton} onPress={() => navigation.navigate("ProfileScreen")}> 
+          <Icon name="person" size={32} color="#fff" />
+        </TouchableOpacity>
+        <View style={styles.logoRowNew}>
           <Icon name="favorite" size={28} color="#F47C4B" style={{marginRight: 6}} />
           <Text style={styles.appName}>CareMitra</Text>
         </View>
       </View>
 
       {/* Greeting */}
-      <Text style={styles.greeting}>{Name}</Text>
+      <Text style={styles.greetingNew}>{Name}</Text>
 
-      {/* Main cards grid */}
-      <View style={styles.cardGrid}>
-        <TouchableOpacity style={[styles.card, styles.profileCard]} onPress={() => navigation.navigate("ProfileScreen")}> 
-          <Icon name="person" size={48} color="#4B5E7A" />
-          <Text style={styles.cardText}>Profile</Text>
+      {/* Main cards grid with new options */}
+      <View style={styles.cardGridNew}>
+        <TouchableOpacity style={[styles.cardNew, styles.medicationCardNew]} onPress={() => navigation.navigate("MedicationReminder")}> 
+          <Icon name="medication" size={40} color="#2B6E53" />
+          <Text style={styles.cardTextNew}>Medication</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.card, styles.medicationCard]} onPress={() => navigation.navigate("MedicationReminder")}> 
-          <Icon name="medication" size={48} color="#2B6E53" />
-          <Text style={styles.cardText}>Medication Reminders</Text>
+        <TouchableOpacity style={[styles.cardNew, styles.familyCardNew]} onPress={() => navigation.navigate("FamilyMemberScreen")}> 
+          <Icon name="diversity-3" size={40} color="#2B4B3A" />
+          <Text style={styles.cardTextNew}>Family</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.card, styles.familyCard]} onPress={() => navigation.navigate("FamilyMemberScreen")}> 
-          <Icon name="diversity-3" size={48} color="#2B4B3A" />
-          <Text style={styles.cardText}>Family</Text>
+        <TouchableOpacity style={[styles.cardNew, styles.healthCardNew]} onPress={() => navigation.navigate("HealthTrackingScreen")}> 
+          <Icon name="favorite" size={40} color="#3A5E8C" />
+          <Text style={styles.cardTextNew}>Health</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.card, styles.healthCard]} onPress={() => navigation.navigate("HealthTrackingScreen")}> 
-          <Icon name="favorite" size={48} color="#3A5E8C" />
-          <Text style={styles.cardText}>Health Tracking</Text>
+        <TouchableOpacity style={[styles.cardNew, styles.chatCardNew]} onPress={() => navigation.navigate("MessagesScreen")}> 
+          <Icon name="chat" size={40} color="#F47C4B" />
+          <Text style={styles.cardTextNew}>Chat</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.cardNew, styles.taskCardNew]} onPress={() => navigation.navigate("TaskReminderScreen")}> 
+          <Icon name="event-note" size={40} color="#4B5E7A" />
+          <Text style={styles.cardTextNew}>Task Reminder</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.cardNew, styles.callCardNew]} onPress={() => navigation.navigate("AutoCallScreen")}> 
+          <Icon name="call" size={40} color="#2B6E53" />
+          <Text style={styles.cardTextNew}>Auto Call</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Large Centered Microphone Button */}
-      <View style={styles.centerMicRow}>
-        <TouchableOpacity style={styles.centerMicButton} onPress={startListening} disabled={isProcessingVoice}>
-          <Icon name="mic" size={48} color="#fff" />
+      {/* Large Microphone Button at the bottom */}
+      <View style={styles.bottomMicRow}>
+        <TouchableOpacity  style={[styles.bottomMicButton, isListening ? { borderColor: "red" } : {}]} onPress={startListening} disabled={isProcessingVoice} >
+          {isProcessingVoice ? (
+            <ActivityIndicator size="large" color="#000" />
+          ) : (
+            <Icon name="mic" size={72} color="#fff" />
+          )}
         </TouchableOpacity>
       </View>
-
-      {/* To-Do List heading */}
-      <View style={styles.todoHeaderRow}>
-        <Text style={styles.todoHeader}>To-Do List</Text>
-      </View>
-
-      {/* To-Do List cards */}
-      <FlatList
-        data={reminders.length > 0 ? reminders : [
-          { id: '1', title: 'Physiotherapy exercises', subtitle: '9:00 am', icon: 'notifications' },
-          { id: '2', title: 'Amlodipine 5 mg', subtitle: '12:00 pm', icon: 'medication' },
-          { id: '3', title: 'Call with Anjali', subtitle: '2:00 pm', icon: 'call' },
-        ]}
-        renderItem={({ item }) => (
-          <View style={styles.todoCard}>
-            <View style={[styles.todoIconCircle, {backgroundColor: getTodoIconBg(item.icon)}]}>
-              <Icon name={item.icon} size={24} color="#fff" />
-            </View>
-            <View style={{flex: 1}}>
-              <Text style={styles.todoTitle}>{item.title}</Text>
-              <Text style={styles.todoTime}>{item.subtitle}</Text>
-            </View>
-          </View>
-        )}
-        keyExtractor={(item) => item.id}
-        style={styles.reminderList}
-        contentContainerStyle={{paddingBottom: 30}}
-      />
     </SafeAreaView>
   );
 };
@@ -582,19 +566,33 @@ const { width } = Dimensions.get("window");
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFF7E3', // soft yellow
+    backgroundColor: '#FFF7E3',
     paddingHorizontal: 0,
     paddingVertical: 0,
   },
-  topBar: {
+  topBarNew: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-start',
     paddingTop: 24,
-    paddingRight: 24,
+    paddingHorizontal: 24,
     marginBottom: 8,
   },
-  logoRow: {
+  profileButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#2B2B2B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+  },
+  logoRowNew: {
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -604,24 +602,24 @@ const styles = StyleSheet.create({
     color: '#2B2B2B',
     letterSpacing: 0.5,
   },
-  greeting: {
-    fontSize: 32,
+  greetingNew: {
+    fontSize: 28,
     fontWeight: 'bold',
     color: '#2B2B2B',
     marginLeft: 24,
-    marginBottom: 18,
+    marginBottom: 12,
     marginTop: 0,
   },
-  cardGrid: {
+  cardGridNew: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
     marginHorizontal: 0,
     marginBottom: 18,
   },
-  card: {
-    width: 150,
-    height: 120,
+  cardNew: {
+    width: 120,
+    height: 100,
     borderRadius: 18,
     margin: 10,
     alignItems: 'center',
@@ -633,93 +631,49 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  profileCard: {
-    backgroundColor: '#D6E6F2',
-  },
-  medicationCard: {
+  medicationCardNew: {
     backgroundColor: '#D6F2E6',
   },
-  familyCard: {
+  familyCardNew: {
     backgroundColor: '#E6F2D6',
   },
-  healthCard: {
+  healthCardNew: {
     backgroundColor: '#D6E6F2',
   },
-  cardText: {
-    fontSize: 18,
+  chatCardNew: {
+    backgroundColor: '#FCE5D6',
+  },
+  taskCardNew: {
+    backgroundColor: '#E3EAF6',
+  },
+  cardTextNew: {
+    fontSize: 15,
     fontWeight: 'bold',
     color: '#2B2B2B',
-    marginTop: 10,
+    marginTop: 8,
     textAlign: 'center',
   },
-  centerMicRow: {
+  bottomMicRow: {
     alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 8,
+    justifyContent: 'flex-end',
+    flex: 1,
+    marginBottom: 32,
   },
-  centerMicButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+  bottomMicButton: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     backgroundColor: '#2B2B2B',
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 4,
+    elevation: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
+    shadowOpacity: 0.16,
+    shadowRadius: 6,
   },
-  todoHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 8,
-    marginLeft: 24,
-    marginRight: 24,
-  },
-  todoHeader: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#2B2B2B',
-    flex: 1,
-  },
-  reminderList: {
-    paddingHorizontal: 0,
-    marginTop: 0,
-  },
-  todoCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    marginHorizontal: 24,
-    marginVertical: 8,
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  todoIconCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  todoTitle: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: '#2B2B2B',
-  },
-  todoTime: {
-    fontSize: 15,
-    color: '#6B6B6B',
-    marginTop: 2,
+  callCardNew: {
+    backgroundColor: '#F2E6D6',
   },
 });
 
