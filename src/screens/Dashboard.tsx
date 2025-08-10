@@ -1,694 +1,697 @@
-import React, { useEffect, useState, useCallback } from "react";
-import { View, Text, StyleSheet, Alert, TouchableOpacity, FlatList, Dimensions, Platform, BackHandler } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import Icon from "react-native-vector-icons/MaterialIcons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { ActivityIndicator } from "react-native";
-import Voice from "@react-native-community/voice";
-import Tts from 'react-native-tts';
-import {initializeNotifications} from '../services/NotificationService';
-import {fetchAndStoreUserDetails,generateTodoApi, getWeatherApi} from '../services/api';
-import { useFocusEffect } from '@react-navigation/native';
-import Geolocation from 'react-native-geolocation-service';
-const { PermissionsAndroid } = require('react-native');
-import { getAuthTokens } from '../services/api'; // Adjust the import path as necessary
-
-const Dashboard = ({ navigation  }) => {
-  const [lastFeedbackTime, setLastFeedbackTime] = useState(null);
-  const [proactivePrompt, setProactivePrompt] = useState(null);
-  const [isListening, setIsListening] = useState(false);
-  const [isProcessingVoice, setIsProcessingVoice] = useState(false);
-  const [recognizedText, setRecognizedText] = useState("");
-
-  const [Name, setName] = useState("Hey, User");  // Hardcoded for design match
-  const VOICE_ASSISTANT_API_URL = "https://zupkiai.onrender.com/proactive-talk"; // EXAMPLE URL
-  
-  useEffect(() => {
-    fetchAndStoreUserDetails();
-    
-    // Initialize notifications and get the cleanup function
-    const unsubscribeNotifications = initializeNotifications();
-
-    // Clean up listeners when the component unmounts
-    return () => {
-      unsubscribeNotifications();
-    };
-  }, []); // Empty dependency array ensures this effect runs only once on mount
-
-  useEffect(() => {
-    const initializeAppData = async () => {
-      // First, fetch and store user details
-      await fetchAndStoreUserDetails();
-
-      // Then, fetch user data from AsyncStorage to set the name
-      try {
-        const userDetailsString = await AsyncStorage.getItem("userDetails");
-        if (userDetailsString) {
-          const userDetails = JSON.parse(userDetailsString);
-          userDetails.name ? setName(`Hey, ${userDetails.name}`) :null ;
-        } else {
-          setName("Hey there!"); // Fallback if user details are not found
-        }
-      } catch (error) {
-        console.error("Error loading user data:", error);
-        setName("Hello!"); // Fallback on error
-      }
-
-      // Initialize notifications and get the cleanup function
-      const unsubscribeNotifications = initializeNotifications();
-
-      // Clean up listeners when the component unmounts
-      return () => {
-        unsubscribeNotifications();
-      };
-    };
-
-    initializeAppData();
-  }, []); // Empty dependency array ensures this effect runs only once on mount
-
-  // useEffect(() => {
-  //   if (remoteMessage){
-  //     sendVoiceCommandToBackend(`Ask user-,${remoteMessage}`)
-  //   }
-  // }, [remoteMessage]);
-
-
-  // Initialize TTS
-  useEffect(() => {
-    if (Platform.OS === 'ios' || Platform.OS === 'android') {
-      Tts.setDefaultLanguage('en-US');
-      Tts.setDefaultRate(0.5);
-
-      Tts.addEventListener('tts-start', (event) => console.log('TTS Start', event));
-      Tts.addEventListener('tts-finish', (event) => console.log('TTS Finish', event));
-      Tts.addEventListener('tts-cancel', (event) => console.log('TTS Cancel', event));
-    }
-
-    return () => {
-      if (Platform.OS === 'ios' || Platform.OS === 'android') {
-        Tts.stop();
-      }
-    };
-  }, []);
-
-  const storeFeedback = async (response: any) => {
-    try {
-      const timestamp = new Date().toLocaleString();
-      await AsyncStorage.setItem("latestInteraction", response);
-      await AsyncStorage.setItem("lastResponseTime", timestamp);
-    } catch (error) {
-      console.error("Error storing feedback:", error);
-    }
-  };
-
-  const onSpeechStart = useCallback((e) => {
-    setIsListening(true);
-    setRecognizedText("");
-    setIsProcessingVoice(false);
-  }, []);
-
-  const onSpeechEnd = useCallback((e) => {
-    setIsListening(false);
-    // Voice.destroy() is usually called AFTER processing the speech result
-    // or when the component unmounts. Not typically right after onSpeechEnd,
-    // as you might still need to retrieve results.
-  }, []);
-
-  const onSpeechResults = useCallback((e) => {
-    if (e.value && e.value.length > 0) {
-      const text = e.value[0];
-      setRecognizedText(text);
-      sendVoiceCommandToBackend(text);
-    } else {
-      Alert.alert("No speech recognized", "Please try speaking more clearly.");
-      Tts.speak("I didn't catch that. Could you please repeat?");
-      // If no speech recognized, we can destroy to reset the engine for the next attempt
-      Voice.destroy().catch(err => console.error("Error destroying Voice after no speech results:", err));
-    }
-  }, []);
-
-  const onSpeechError = useCallback((e) => {
-    setIsListening(false);
-    setIsProcessingVoice(false);
-
-    // Crucially, destroy the Voice instance on error to reset its state
-    // This is the most likely place where the "every second time" error is resolved.
-    Voice.destroy();
-    Tts.speak("I'm sorry, Could not understand your speech. Please try speaking again.");
-  }, []);
-
-  // Voice Assistant Hooks and Functions
-  useEffect(() => {
-    if (Platform.OS === 'ios' || Platform.OS === 'android') {
-      Voice.onSpeechStart = onSpeechStart;
-      Voice.onSpeechEnd = onSpeechEnd;
-      Voice.onSpeechResults = onSpeechResults;
-      Voice.onSpeechError = onSpeechError;
-    }
-
-    return () => {
-      if (Platform.OS === 'ios' || Platform.OS === 'android') {
-        // Correct way to remove all listeners and destroy Voice
-        Voice.destroy().catch(err => console.error("Error destroying Voice on unmount:", err));
-        // Voice.removeAllListeners() is typically called after destroy.
-        // It's also safe to call it directly.
-        Voice.removeAllListeners();
-      }
-    };
-  }, [onSpeechStart, onSpeechEnd, onSpeechResults, onSpeechError]); // Depend on memoized callbacks
-
-  const startListening = async () => {
-    if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
-      Alert.alert("Unsupported", "Voice recognition is only supported on iOS and Android devices.");
-      return;
-    }
-
-    // Microphone permission check
-    let hasPermission = true;
-    if (Platform.OS === 'android') {
-      try {
-        const granted = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-          {
-            title: "Microphone Permission",
-            message: "This app needs access to your microphone to recognize your speech.",
-            buttonNeutral: "Ask Me Later",
-            buttonNegative: "Cancel",
-            buttonPositive: "OK"
-          }
-        );
-        hasPermission = granted === PermissionsAndroid.RESULTS.GRANTED;
-      } catch (err) {
-        console.warn("Permission error:", err);
-        hasPermission = false;
-      }
-    } else if (Platform.OS === 'ios') {
-      // iOS: Voice.start will prompt for permission if not already granted
-      // Optionally, you can use react-native-permissions for a more robust check
-      hasPermission = true;
-    }
-
-    if (!hasPermission) {
-      Alert.alert("Permission Denied", "Microphone permission is required to use voice recognition.");
-      return;
-    }
-
-    if (!isListening) {
-      try {
-        // Always destroy before starting to ensure a clean slate.
-        await Voice.destroy().catch(err => console.error("Error destroying Voice before new session:", err));
-        Voice.removeAllListeners();
-
-        Voice.onSpeechStart = onSpeechStart;
-        Voice.onSpeechEnd = onSpeechEnd;
-        Voice.onSpeechResults = onSpeechResults;
-        Voice.onSpeechError = onSpeechError;
-
-        Tts.stop();
-        setRecognizedText("");
-        setIsProcessingVoice(false);
-
-        await Voice.start("en-US");
-      } catch (error) {
-        console.error("Error starting speech recognition: ", error);
-        setIsListening(false);
-        setIsProcessingVoice(false);
-        Alert.alert("Error", "Failed to start speech recognition. Please check microphone permissions.");
-        Tts.speak("I couldn't start listening. Please check your microphone permissions.");
-      }
-    }
-  };
-
-    const stopListening = async () => {
-      if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
-      try {
-        await Voice.stop();
-        setIsListening(false);
-        console.log("Stopped listening.");
-      } catch (error) {
-        console.error("Error stopping speech recognition: ", error);
-      }
-  };
-
-  // Function to send voice command to backend and handle response
-  const sendVoiceCommandToBackend = async (command) => {
-    setIsProcessingVoice(true);
-    console.log("Sending command to backend:", command);
-      const tokens = await getAuthTokens();
-      const idToken = tokens?.idToken;
-
-      if (!idToken) {
-        Alert.alert("Authentication Error", "Could not retrieve user session. Please log in again.");
-        throw new Error("ID token not available.");
-      }
-
-    try {
-      const response = await fetch(VOICE_ASSISTANT_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          reply: command,
-          idToken:idToken
-        }),
-      });
-      console.log("Backend response status:", response.status);
-
-      if (!response.ok) {
-        let errorDetail = `HTTP error! status: ${response.status}`;
-        try {
-          const errorJson = await response.json();
-          if (errorJson && errorJson.detail) {
-            errorDetail += ` - Detail: ${errorJson.detail}`;
-          }
-        } catch (jsonError) {
-          console.warn("Could not parse error JSON:", jsonError);
-        }
-        throw new Error(errorDetail);
-      }
-
-      const data = await response.json();
-      console.log("Backend response:", data);
-
-      const responseText = data.response || "I didn't get a clear response from the server.";
-
-      if (Platform.OS === 'ios' || Platform.OS === 'android') {
-        Tts.speak(responseText);
-      }
-
-    } catch (error) {
-      console.error("Error sending voice command to backend:", error);
-      Alert.alert("Communication Error", `Could not connect to the voice assistant service: ${error.message}`);
-      Tts.speak("I'm sorry, I'm having trouble connecting to my service. Please try again later.");
-    } finally {
-      setIsProcessingVoice(false);
-      // Destroy Voice after backend processing is complete to reset for the next user interaction
-      Voice.destroy().catch(err => console.error("Error destroying Voice after backend call:", err));
-      Voice.removeAllListeners(); // Clean up listeners after destroy
-    }
-  };
-
-  useEffect(() => {
-    const checkFeedback = () => {
-      const now = new Date();
-      if (lastFeedbackTime && now.getTime() - lastFeedbackTime >= 4 * 60 * 60 * 1000) {
-        Alert.alert(
-          "How Are You?",
-          "Hello! How are you feeling right now?",
-          [
-            { text: "Good", onPress: () => storeFeedback("I’m feeling good") },
-            { text: "Okay", onPress: () => storeFeedback("I’m feeling okay") },
-            { text: "Not Great", onPress: () => storeFeedback("I’m not feeling great") },
-          ]
-        );
-        setLastFeedbackTime(now);
-      }
-    };
-
-    if (!lastFeedbackTime) {
-      setLastFeedbackTime(new Date());
-    }
-
-    const interval = setInterval(checkFeedback, 60 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [lastFeedbackTime]);
-
-
-
-  const handlePromptResponse = (action, response) => {
-    if (action === "suggestWalk") {
-      response === "yes"
-        ? Alert.alert("Great!", "Let’s plan a short walk. I’ll remind you in 10 minutes.")
-        : Alert.alert("Okay", "Maybe later!");
-    } else if (action === "suggestMusic") {
-      response === "yes" ? navigation.navigate("Music") : Alert.alert("Okay", "Let me know later!");
-    } else if (action === "suggestContact") {
-      response === "yes" ? navigation.navigate("Call") : Alert.alert("Okay", "I’ll check back later!");
-    } else if (action === "suggestMessages") {
-      response === "yes" ? navigation.navigate("Messages") : Alert.alert("Okay", "Check your messages later!");
-    }
-    setProactivePrompt(null);
-  };
-
-  const [reminders, setReminders] = useState([]);
-
-  useEffect(() => {
-    const fetchTodos = async () => {
-      try {
-        const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-        const storedTodosString = await AsyncStorage.getItem("todos");
-        const storedTodosDate = await AsyncStorage.getItem("todosDate");
-
-        let todosData = null;
-
-        if (storedTodosString && storedTodosDate === today) {
-          // Use cached todos
-          todosData = JSON.parse(storedTodosString);
-        } else {
-          // Fetch new todos and cache them
-          const response = await generateTodoApi();
-          todosData = response;
-          await AsyncStorage.setItem("todos", JSON.stringify(response));
-          await AsyncStorage.setItem("todosDate", today);
-        }
-
-        // Get current hour
-        const now = new Date();
-        const hour = now.getHours();
-
-        // Determine current period
-        let currentPeriod = "";
-        if (hour >= 5 && hour < 12) {
-          currentPeriod = "morning";
-        } else if (hour >= 12 && hour < 18) {
-          currentPeriod = "evening";
-        } else {
-          currentPeriod = "night";
-        }
-
-        // Only include current and future periods
-        const periodOrder = ["morning", "evening", "night"];
-        const currentIndex = periodOrder.indexOf(currentPeriod);
-        const periodsToShow = periodOrder.slice(currentIndex);
-
-        let allTodos = [];
-        periodsToShow.forEach(period => {
-          if (todosData[period]) {
-            todosData[period].forEach(todo => {
-              allTodos.push({
-                id: `${period}-${todo["to-do-list"]}-${todo.time}`,
-                title: todo["to-do-list"],
-                subtitle: `(${period.charAt(0).toUpperCase() + period.slice(1)})`,
-                icon: "check-circle",
-                period,
-              });
-            });
-          }
-        });
-
-        // Sort by period order, then by time
-        allTodos.sort((a, b) => {
-          const periodCmp = periodsToShow.indexOf(a.period) - periodsToShow.indexOf(b.period);
-          if (periodCmp !== 0) return periodCmp;
-          const t1 = a.subtitle.match(/\d{2}:\d{2}/)?.[0] || "";
-          const t2 = b.subtitle.match(/\d{2}:\d{2}/)?.[0] || "";
-          return t1.localeCompare(t2);
-        });
-
-        setReminders(allTodos);
-      } catch (e) {
-        console.error("Failed to fetch todos", e);
-        setReminders([]);
-      }
-    };
-    fetchTodos();
-  }, []);
-
-  // Add a title above the reminders list
-
-
-
-  
-  useEffect(() => {
-
-        onAppResume();
-    
-  }, []);
-
-  const onAppResume = async () => {
-    const now = Date.now();
-
-    const lastOpened = await AsyncStorage.getItem('last_opened');
-    const openCountRaw = await AsyncStorage.getItem('open_count');
-    const openCount = openCountRaw ? parseInt(openCountRaw, 10) : 0;
-
-    const hoursSinceLast = lastOpened ? (now - parseInt(lastOpened)) / (1000 * 60 * 60) : Infinity;
-    const currentHour = new Date().getHours();
-
-    let message: string | null = null;
-
-    // Inactivity trigger
-
-      message = ' ';
-      await sendVoiceCommandToBackend(message);
-    
-
-    await AsyncStorage.setItem('last_opened', now.toString());
-  };
-
-  useFocusEffect(
-    useCallback(() => {
-      // On focus: do nothing
-      return () => {
-        // On unfocus: stop voice and TTS
-        if (Platform.OS === 'ios' || Platform.OS === 'android') {
-          Voice.destroy().catch(err => console.error('Error destroying Voice on unfocus:', err));
-          Voice.removeAllListeners();
-          Tts.stop();
-        }
-      };
-    }, [])
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  SafeAreaView,
+  ScrollView,
+  Dimensions,
+} from 'react-native';
+import LinearGradient from 'react-native-linear-gradient';
+import {
+  Pill,
+  CheckSquare,
+  Mic,
+  Phone,
+  Heart,
+  Calendar,
+  Bell,
+  Activity,
+  Users,
+  UserPlus,
+  Target,
+  TrendingUp,
+  User,
+} from 'lucide-react-native';
+
+interface MainDashboardProps {
+  navigation: any; // Assuming navigation prop from @react-navigation/native
+  autoVoiceStarted: boolean;
+}
+
+const DashboardScreen: React.FC<MainDashboardProps> = ({ navigation, autoVoiceStarted }) => {
+  const [connectedUsers, setConnectedUsers] = useState(3);
+  const [userStats, setUserStats] = useState({
+    currentWeight: '72 kg',
+    goalWeight: '68 kg',
+    stepsToday: 8420,
+    caloriesBurned: 345,
+    heartRate: 72,
+    weeklyGoals: 5,
+    completedGoals: 3,
+  });
+
+  const currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const currentDate = new Date().toLocaleDateString([], {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  });
+
+  const CustomAvatar = ({ initials, size = 32 }: { initials: string; size?: number }) => (
+    <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2 }]}>
+      <Text style={styles.avatarText}>{initials}</Text>
+    </View>
   );
 
-  useEffect(() => {
-    const beforeRemoveListener = (e: any) => {
-      e.preventDefault();
-      BackHandler.exitApp(); // Close the app if user tries to go back
-    };
-    navigation.addListener('beforeRemove', beforeRemoveListener);
-    return () => navigation.removeListener('beforeRemove', beforeRemoveListener);
-  }, [navigation]);
+  const CustomBadge = ({
+    children,
+    backgroundColor,
+    textColor,
+    borderColor,
+  }: {
+    children: React.ReactNode;
+    backgroundColor?: string;
+    textColor?: string;
+    borderColor?: string;
+  }) => (
+    <View
+      style={[
+        styles.badge,
+        backgroundColor && { backgroundColor },
+        borderColor && { borderColor, borderWidth: 1 },
+      ]}
+    >
+      <Text style={[styles.badgeText, textColor && { color: textColor }]}>{children}</Text>
+    </View>
+  );
 
-  useEffect(() => {
-    const getLocationAndSend = async () => {
-      let hasPermission = false;
-      if (Platform.OS === 'android') {
-        const granted = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-          {
-            title: 'Location Permission',
-            message: 'This app needs access to your location to provide personalized services.',
-            buttonNeutral: 'Ask Me Later',
-            buttonNegative: 'Cancel',
-            buttonPositive: 'OK',
-          }
-        );
-        hasPermission = granted === PermissionsAndroid.RESULTS.GRANTED;
-      } else if (Platform.OS === 'ios') {
-        // iOS: Geolocation.requestAuthorization() can be used, but Geolocation.getCurrentPosition will prompt if not granted
-        hasPermission = true;
-      }
-      if (!hasPermission) {
-        Alert.alert('Permission Denied', 'Location permission is required for this feature.');
-        return;
-      }
-      Geolocation.getCurrentPosition(
-        async (position) => {
-          const { latitude, longitude } = position.coords;
-          try {
-
-            await getWeatherApi(latitude, longitude);
-          } catch (error) {
-            console.error('Error sending location to backend:', error);
-          }
-        },
-        (error) => {
-          console.error('Error getting location:', error);
-          Alert.alert('Location Error', 'Could not fetch your location.');
-        },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
-      );
-    };
-    getLocationAndSend();
-  }, []);
+  // Component methods can be added here if needed
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Top bar with logo and small profile button */}
-      <View style={styles.topBarNew}>
-        <TouchableOpacity style={styles.profileButton} onPress={() => navigation.navigate("ProfileScreen")}> 
-          <Icon name="person" size={32} color="#fff" />
-        </TouchableOpacity>
-        <View style={styles.logoRowNew}>
-          <Icon name="favorite" size={28} color="#F47C4B" style={{marginRight: 6}} />
-          <Text style={styles.appName}>CareMitra</Text>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Header with Profile */}
+        <View style={styles.header}>
+          <View style={styles.headerTextContainer}>
+            <Text style={styles.headerTitle}>SyncKi</Text>
+            <Text style={styles.headerDate}>{currentDate}</Text>
+            <Text style={styles.headerTime}>{currentTime}</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.profileButton}
+            onPress={() => navigation.navigate('profile')}
+          >
+            <CustomAvatar initials="JD" size={32} />
+          </TouchableOpacity>
         </View>
-      </View>
 
-      {/* Greeting */}
-      <Text style={styles.greetingNew}>{Name}</Text>
+        {/* Health Status Overview */}
+        <LinearGradient
+          colors={['#eff6ff', '#ecfdf5']}
+          style={styles.card}
+        >
+          <View style={styles.cardHeader}>
+            <Heart size={20} color="#1e40af" />
+            <Text style={styles.cardTitle}>Today's Wellness</Text>
+          </View>
+          <View style={styles.cardContent}>
+            <View style={styles.grid}>
+              <View style={styles.gridItem}>
+                <Text style={styles.gridLabel}>Medicines</Text>
+                <CustomBadge backgroundColor="#e5e7eb">2/3</CustomBadge>
+              </View>
+              <View style={styles.gridItem}>
+                <Text style={styles.gridLabel}>Tasks</Text>
+                <CustomBadge backgroundColor="#e5e7eb">4/6</CustomBadge>
+              </View>
+              <View style={styles.gridItem}>
+                <Text style={styles.gridLabel}>Steps</Text>
+                <CustomBadge backgroundColor="#22c55e" textColor="#fff">
+                  {userStats.stepsToday.toLocaleString()}
+                </CustomBadge>
+              </View>
+              <View style={styles.gridItem}>
+                <Text style={styles.gridLabel}>Goals</Text>
+                <CustomBadge backgroundColor="#a855f7" textColor="#fff">
+                  {userStats.completedGoals}/{userStats.weeklyGoals}
+                </CustomBadge>
+              </View>
+            </View>
+            <View style={styles.wellnessScoreContainer}>
+              <View style={styles.wellnessScoreCard}>
+                <Text style={styles.wellnessScore}>87%</Text>
+                <Text style={styles.wellnessScoreLabel}>Wellness Score</Text>
+              </View>
+            </View>
+          </View>
+        </LinearGradient>
 
-      {/* Main cards grid with new options */}
-      <View style={styles.cardGridNew}>
-        <TouchableOpacity style={[styles.cardNew, styles.medicationCardNew]} onPress={() => navigation.navigate("MedicationReminder")}> 
-          <Icon name="medication" size={40} color="#2B6E53" />
-          <Text style={styles.cardTextNew}>Medication</Text>
+        {/* User Sync Card */}
+        <TouchableOpacity onPress={() => navigation.navigate('MainTabs', { screen: 'Friends' })}>
+          <LinearGradient
+            colors={['#ecfdf5', '#ccfbf1']}
+            style={styles.card}
+          >
+            <View style={styles.cardContent}>
+              <View style={styles.userSyncHeader}>
+                <View style={styles.iconCircle}>
+                  <Users size={24} color="#047857" />
+                </View>
+                <View>
+                  <Text style={styles.cardTitle}>Wellness Sync</Text>
+                  <Text style={styles.cardSubtitle}>
+                    {connectedUsers} connected • Share health data
+                  </Text>
+                </View>
+                <TouchableOpacity style={styles.connectButton}>
+                  <UserPlus size={16} color="#047857" style={styles.buttonIcon} />
+                  <Text style={styles.buttonText}>Connect</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.avatarGroup}>
+                <CustomAvatar initials="SJ" size={24} />
+                <CustomAvatar initials="MC" size={24} />
+                <CustomAvatar initials="EW" size={24} />
+                <View style={[styles.avatar, { width: 24, height: 24, borderRadius: 12 }]}>
+                  <Text style={styles.avatarText}>+</Text>
+                </View>
+              </View>
+            </View>
+          </LinearGradient>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.cardNew, styles.familyCardNew]} onPress={() => navigation.navigate("FamilyMemberScreen")}> 
-          <Icon name="diversity-3" size={40} color="#2B4B3A" />
-          <Text style={styles.cardTextNew}>Family</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.cardNew, styles.healthCardNew]} onPress={() => navigation.navigate("HealthTrackingScreen")}> 
-          <Icon name="favorite" size={40} color="#3A5E8C" />
-          <Text style={styles.cardTextNew}>Health</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.cardNew, styles.chatCardNew]} onPress={() => navigation.navigate("MessagesScreen")}> 
-          <Icon name="chat" size={40} color="#F47C4B" />
-          <Text style={styles.cardTextNew}>Chat</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.cardNew, styles.taskCardNew]} onPress={() => navigation.navigate("TaskReminderScreen")}> 
-          <Icon name="event-note" size={40} color="#4B5E7A" />
-          <Text style={styles.cardTextNew}>Task Reminder</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.cardNew, styles.callCardNew]} onPress={() => navigation.navigate("AutoCallScreen")}> 
-          <Icon name="call" size={40} color="#2B6E53" />
-          <Text style={styles.cardTextNew}>Auto Call</Text>
-        </TouchableOpacity>
-      </View>
 
-      {/* Large Microphone Button at the bottom */}
-      <View style={styles.bottomMicRow}>
-        <TouchableOpacity  style={[styles.bottomMicButton, isListening ? { borderColor: "red" } : {}]} onPress={startListening} disabled={isProcessingVoice} >
-          {isProcessingVoice ? (
-            <ActivityIndicator size="large" color="#000" />
-          ) : (
-            <Icon name="mic" size={72} color="#fff" />
-          )}
-        </TouchableOpacity>
-      </View>
+        {/* Quick Actions Grid */}
+        <View style={styles.grid}>
+          <TouchableOpacity 
+            onPress={() => navigation.navigate('MainTabs', { screen: 'Medicine' })}
+            style={styles.actionCardWrapper}
+          >
+            <LinearGradient
+              colors={['#faf5ff', '#fdf2f8']}
+              style={styles.actionCard}
+            >
+              <View style={styles.iconCircle}>
+                <Pill size={24} color="#9333ea" />
+              </View>
+              <Text style={styles.actionTitle}>Medicine</Text>
+              <Text style={styles.actionSubtitle}>Track & sync</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            onPress={() => navigation.navigate('MainTabs', { screen: 'Tasks' })}
+            style={styles.actionCardWrapper}
+          >
+            <LinearGradient
+              colors={['#ecfdf5', '#eff6ff']}
+              style={styles.actionCard}
+            >
+              <View style={styles.iconCircle}>
+                <CheckSquare size={24} color="#22c55e" />
+              </View>
+              <Text style={styles.actionTitle}>Tasks</Text>
+              <Text style={styles.actionSubtitle}>Daily & sync</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            onPress={() => navigation.navigate('MainTabs', { screen: 'Health' })}
+            style={styles.actionCardWrapper}
+          >
+            <LinearGradient
+              colors={['#fef2f2', '#ffedd5']}
+              style={styles.actionCard}
+            >
+              <View style={styles.iconCircle}>
+                <Heart size={24} color="#dc2626" />
+              </View>
+              <Text style={styles.actionTitle}>Health</Text>
+              <Text style={styles.actionSubtitle}>Vitals & sync</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            onPress={() => navigation.navigate('goals')}
+            style={styles.actionCardWrapper}
+          >
+            <LinearGradient
+              colors={['#fefce8', '#fef3c7']}
+              style={styles.actionCard}
+            >
+              <View style={styles.iconCircle}>
+                <Target size={24} color="#d97706" />
+              </View>
+              <Text style={styles.actionTitle}>Goals</Text>
+              <Text style={styles.actionSubtitle}>Track & achieve</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+
+        {/* Secondary Actions Row */}
+        <View style={styles.grid}>
+          <TouchableOpacity 
+            onPress={() => navigation.navigate('calls')}
+            style={styles.actionCardWrapper}
+          >
+            <LinearGradient
+              colors={['#eef2ff', '#f5f3ff']}
+              style={styles.secondaryActionCard}
+            >
+              <View style={styles.iconCircleSmall}>
+                <Phone size={20} color="#4f46e5" />
+              </View>
+              <Text style={styles.actionTitle}>AI Calls</Text>
+              <Text style={styles.actionSubtitle}>Schedule</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            onPress={() => navigation.navigate('voice')}
+            style={styles.actionCardWrapper}
+          >
+            <LinearGradient
+              colors={['#eff6ff', '#e0f7fa']}
+              style={styles.secondaryActionCard}
+            >
+              <View style={styles.iconCircleSmall}>
+                <Mic size={20} color="#0284c7" />
+              </View>
+              <Text style={styles.actionTitle}>Chat AI</Text>
+              <Text style={styles.actionSubtitle}>Full mode</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+
+        {/* Upcoming Reminders */}
+        <LinearGradient
+          colors={['#f8fafc', '#f1f5f9']}
+          style={styles.card}
+        >
+          <View style={styles.cardHeader}>
+            <View style={[styles.iconCircle, { backgroundColor: '#e2e8f0' }]}>
+              <Bell size={20} color="#475569" />
+            </View>
+            <View style={styles.cardHeaderContent}>
+              <Text style={styles.cardTitle}>Next Actions</Text>
+              <Text style={styles.cardSubtitle}>Today's schedule</Text>
+            </View>
+          </View>
+          <View style={styles.cardContent}>
+            <View style={[styles.reminderItem, styles.reminderItemPill]}>
+              <View style={styles.reminderContent}>
+                <View style={[styles.reminderIcon, { backgroundColor: '#fef9c3' }]}>
+                  <Pill size={16} color="#ca8a04" />
+                </View>
+                <View>
+                  <Text style={styles.reminderTitle}>Vitamin D</Text>
+                  <Text style={styles.reminderSubtitle}>Today, 2:00 PM</Text>
+                </View>
+              </View>
+              <CustomBadge backgroundColor="#fef9c3" textColor="#854d0e">1 hour</CustomBadge>
+            </View>
+            <View style={[styles.reminderItem, styles.reminderItemActivity]}>
+              <View style={styles.reminderContent}>
+                <View style={[styles.reminderIcon, { backgroundColor: '#dbeafe' }]}>
+                  <Activity size={16} color="#2563eb" />
+                </View>
+                <View>
+                  <Text style={styles.reminderTitle}>Evening Walk</Text>
+                  <Text style={styles.reminderSubtitle}>Today, 6:00 PM</Text>
+                </View>
+              </View>
+              <CustomBadge backgroundColor="#dbeafe" textColor="#1d4ed8">5 hours</CustomBadge>
+            </View>
+            <View style={[styles.reminderItem, styles.reminderItemTarget]}>
+              <View style={styles.reminderContent}>
+                <View style={[styles.reminderIcon, { backgroundColor: '#dcfce7' }]}>
+                  <Target size={16} color="#16a34a" />
+                </View>
+                <View>
+                  <Text style={styles.reminderTitle}>Weight Check</Text>
+                  <Text style={styles.reminderSubtitle}>Tomorrow, 8:00 AM</Text>
+                </View>
+              </View>
+              <CustomBadge backgroundColor="#dcfce7" textColor="#15803d">Goal</CustomBadge>
+            </View>
+            <View style={[styles.reminderItem, styles.reminderItemMissed]}>
+              <View style={styles.reminderContent}>
+                <View style={[styles.reminderIcon, { backgroundColor: '#fee2e2' }]}>
+                  <Pill size={16} color="#dc2626" />
+                </View>
+                <View>
+                  <Text style={styles.reminderTitle}>Blood Pressure Med</Text>
+                  <Text style={styles.reminderSubtitle}>Missed - 8:00 AM</Text>
+                </View>
+              </View>
+              <CustomBadge backgroundColor="#fee2e2" textColor="#dc2626">Missed</CustomBadge>
+            </View>
+          </View>
+        </LinearGradient>
+
+        {/* Friends Activity Preview */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <TrendingUp size={20} color="#374151" />
+            <Text style={styles.cardTitle}>Friends Activity</Text>
+          </View>
+          <View style={styles.cardContent}>
+            <View style={styles.activityItem}>
+              <View style={styles.activityContent}>
+                <CustomAvatar initials="SJ" size={24} />
+                <View>
+                  <Text style={styles.activityTitle}>Sarah completed morning meditation</Text>
+                  <Text style={styles.activitySubtitle}>2 hours ago</Text>
+                </View>
+              </View>
+              <CustomBadge textColor="#16a34a" borderColor="#bbf7d0">
+                <Heart size={12} color="#16a34a" style={styles.badgeIcon} />
+                92%
+              </CustomBadge>
+            </View>
+            <View style={styles.activityItem}>
+              <View style={styles.activityContent}>
+                <CustomAvatar initials="MC" size={24} />
+                <View>
+                  <Text style={styles.activityTitle}>Mike reached his step goal</Text>
+                  <Text style={styles.activitySubtitle}>4 hours ago</Text>
+                </View>
+              </View>
+              <CustomBadge textColor="#2563eb" borderColor="#bfdbfe">
+                <Target size={12} color="#2563eb" style={styles.badgeIcon} />
+                10k
+              </CustomBadge>
+            </View>
+            <TouchableOpacity
+              style={styles.viewAllButton}
+              onPress={() => navigation.navigate('Friends')}
+            >
+              <Text style={styles.buttonText}>View All Friends Activity</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
-const { width } = Dimensions.get("window");
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFF7E3',
-    paddingHorizontal: 0,
-    paddingVertical: 0,
+    backgroundColor: '#fff',
   },
-  topBarNew: {
+  scrollContent: {
+    padding: 12,
+    paddingBottom: 80, // Adjusted padding for bottom navigation
+  },
+  header: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingTop: 24,
-    paddingHorizontal: 24,
-    marginBottom: 8,
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  headerTextContainer: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1f2937',
+  },
+  headerDate: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  headerTime: {
+    fontSize: 16,
+    color: '#374151',
+    marginTop: 2,
   },
   profileButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#2B2B2B',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
+    borderRadius: 16,
+    padding: 4,
   },
-  logoRowNew: {
+  avatar: {
+    backgroundColor: '#e5e7eb',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1f2937',
+  },
+  card: {
+    borderRadius: 12,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+    overflow: 'hidden',
+  },
+  cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    padding: 12,
+    paddingBottom: 8,
   },
-  appName: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#2B2B2B',
-    letterSpacing: 0.5,
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginLeft: 8,
   },
-  greetingNew: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#2B2B2B',
-    marginLeft: 24,
-    marginBottom: 12,
-    marginTop: 0,
+  cardContent: {
+    padding: 12,
+    paddingTop: 8,
   },
-  cardGridNew: {
+  grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'center',
-    marginHorizontal: 0,
-    marginBottom: 18,
+    justifyContent: 'space-between',
+    marginBottom: 16,
   },
-  cardNew: {
-    width: 120,
-    height: 100,
-    borderRadius: 18,
-    margin: 10,
+  gridItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    width: '48%',
+    marginBottom: 8,
+  },
+  gridLabel: {
+    fontSize: 13,
+    color: '#1f2937',
+    fontWeight: '500',
+  },
+  actionCardWrapper: {
+    width: '48%',
+    marginBottom: 12,
+  },
+  badge: {
+    borderRadius: 10,
+    paddingVertical: 3,
+    paddingHorizontal: 6,
     justifyContent: 'center',
-    backgroundColor: '#E3EAF6',
+    alignItems: 'center',
+  },
+  badgeText: {
+    fontSize: 11,
+    color: '#1f2937',
+    fontWeight: '500',
+  },
+  badgeIcon: {
+    marginRight: 3,
+  },
+  wellnessScoreContainer: {
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  wellnessScoreCard: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+  },
+  wellnessScore: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#22c55e',
+  },
+  wellnessScoreLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  userSyncHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  iconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#ccfbf1',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cardSubtitle: {
+    fontSize: 11,
+    color: '#047857',
+    marginTop: 1,
+  },
+  connectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#6ee7b7',
+    borderRadius: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    backgroundColor: '#fff',
+    marginLeft: 'auto',
+  },
+  buttonText: {
+    fontSize: 14,
+    color: '#047857',
+  },
+  buttonIcon: {
+    marginRight: 4,
+  },
+  avatarGroup: {
+    flexDirection: 'row',
+    marginLeft: -8,
+  },
+  actionCard: {
+    flex: 1,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
-    shadowRadius: 4,
+    shadowRadius: 2,
     elevation: 2,
+    overflow: 'hidden',
+    minHeight: 120,
+    justifyContent: 'center',
   },
-  medicationCardNew: {
-    backgroundColor: '#D6F2E6',
-  },
-  familyCardNew: {
-    backgroundColor: '#E6F2D6',
-  },
-  healthCardNew: {
-    backgroundColor: '#D6E6F2',
-  },
-  chatCardNew: {
-    backgroundColor: '#FCE5D6',
-  },
-  taskCardNew: {
-    backgroundColor: '#E3EAF6',
-  },
-  cardTextNew: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#2B2B2B',
-    marginTop: 8,
+  actionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginTop: 12,
     textAlign: 'center',
   },
-  bottomMicRow: {
-    alignItems: 'center',
-    justifyContent: 'flex-end',
+  actionSubtitle: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  secondaryActionCard: {
     flex: 1,
-    marginBottom: 32,
-  },
-  bottomMicButton: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#2B2B2B',
+    borderRadius: 12,
+    padding: 16,
     alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 6,
+    minHeight: 120,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.16,
-    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+    overflow: 'hidden',
   },
-  callCardNew: {
-    backgroundColor: '#F2E6D6',
+  iconCircleSmall: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#dbeafe',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  // reminderItem styles moved to bottom
+  reminderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  reminderTitle: {
+    fontSize: 13,
+    color: '#1f2937',
+    fontWeight: '500',
+    marginLeft: 6,
+  },
+  reminderSubtitle: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginLeft: 6,
+    marginTop: 1,
+  },
+  activityItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 6,
+    marginBottom: 6,
+  },
+  activityContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  activityTitle: {
+    fontSize: 13,
+    color: '#1f2937',
+    fontWeight: '500',
+    marginLeft: 6,
+  },
+  activitySubtitle: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginLeft: 6,
+    marginTop: 1,
+  },
+  viewAllButton: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  cardHeaderContent: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  reminderIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  reminderItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 8,
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  reminderItemPill: {
+    borderLeftWidth: 3,
+    borderLeftColor: '#ca8a04',
+  },
+  reminderItemActivity: {
+    borderLeftWidth: 3,
+    borderLeftColor: '#2563eb',
+  },
+  reminderItemTarget: {
+    borderLeftWidth: 3,
+    borderLeftColor: '#16a34a',
+  },
+  reminderItemMissed: {
+    borderLeftWidth: 3,
+    borderLeftColor: '#dc2626',
   },
 });
 
-// Helper for icon background color
-function getTodoIconBg(icon: string) {
-  switch (icon) {
-    case 'notifications':
-      return '#FECF6A';
-    case 'medication':
-      return '#7AC7C4';
-    case 'call':
-      return '#7AC77A';
-    default:
-      return '#B0B0B0';
-  }
-}
-
-export default Dashboard;
+export default DashboardScreen;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import {
-  View,
+import { LineChart } from 'react-native-chart-kit';
+import{  View,
   Text,
   StyleSheet,
   TouchableOpacity,
@@ -9,6 +9,7 @@ import {
   ScrollView,
   Keyboard,
   Modal,
+  Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
@@ -46,62 +47,21 @@ const CustomDropdown = ({ label, value, options, onSelect }) => {
   );
 };
 
-const HealthTrackingScreen = ({ navigation, route }) => {
 
-type HealthData = {
-  id: any;
-  type: any;
-  value: any;
-  timestamp: string;
-};
-  const [medicines, setMedicines] = useState(route.params?.medicines || []);
-  const [medicineName, setMedicineName] = useState("");
-  const [initialQuantity, setInitialQuantity] = useState("");
-  const [dailyIntake, setDailyIntake] = useState("");
-  const [dosage, setDosage] = useState("");
+const HealthTrackingScreen = ({ navigation }) => {
+
+  type HealthData = {
+    id: any;
+    type: any;
+    value: any;
+    timestamp: string;
+  };
   const [healthMetric, setHealthMetric] = useState({ type: "Heart Rate", value: "" });
   const [healthData, setHealthData] = useState<HealthData[]>([]);
   const [loaderVisible, setLoaderVisible] = useState(false);
-
   const metricOptions = ["Heart Rate", "Blood Pressure", "Glucose", "Weight", "Oxygen Level"];
-  const resetForm = () => {
-    setMedicineName("");
-    setInitialQuantity("");
-    setDailyIntake("");
-    setDosage("");
-  };
-  const addMedicine = async () => {
-    if (!medicineName || !initialQuantity || !dailyIntake || isNaN(initialQuantity) || isNaN(dailyIntake) || !dosage || isNaN(dosage)) {
-      Alert.alert("Oops!", "Please fill in all fields with valid numbers (e.g., Dosage in mg).", [
-        { text: "OK", style: "default" }
-      ]);
-      return;
-    }
-    setLoaderVisible(true);
-    const newMedicine = {
-      id: `${medicineName.toLowerCase()}-${Date.now()}`,
-      name: medicineName,
-      initialQuantity: parseInt(initialQuantity),
-      dailyIntake: parseInt(dailyIntake),
-      dosage: `${dosage}mg`,
-      timestamp: new Date().toLocaleString()
-    };
-    try {
-      const apiResponse = await saveMedicinesApi([newMedicine]);
-      console.log("Medicine saved successfully:", apiResponse);
-      setMedicines([...medicines, newMedicine]);
-      Alert.alert("Success!", `${medicineName} has been added to your list and saved.`);
-      resetForm();
-    } catch (error) {
-      console.error("Error adding medicine:", error);
-    } finally {
-      setLoaderVisible(false);
-      Keyboard.dismiss();
-    }
-  };
 
-
-useEffect(() => {
+  useEffect(() => {
     const fetchHealthMetrics = async () => {
       try {
         const response = await GetHealthMetricsApi();
@@ -118,34 +78,8 @@ useEffect(() => {
         Alert.alert("Error", "Failed to load health metrics. Please try again later.");
       }
     };
-
     fetchHealthMetrics();
   }, []);
-
-  // New useEffect hook to fetch medicines
-  useEffect(() => {
-    const fetchMedicines = async () => {
-      try {
-        const response = await GetMedicines();
-        if (response && Array.isArray(response)) {
-          setMedicines(response.map(item => ({
-            id: item.id,
-            name: item.medicine_name,
-            dosage: item.dosage,
-            initialQuantity: item.initial_quantity,
-            dailyIntake: item.daily_intake,
-            timestamp: item.timestamp ? new Date(parseInt(item.timestamp) * 1000).toLocaleString() : 'N/A' // Handle null timestamp
-          })));
-        }
-      } catch (error) {
-        console.error("Error fetching medicines:", error);
-        Alert.alert("Error", "Failed to load medicines. Please try again later.");
-      }
-    };
-
-    fetchMedicines();
-  }, []);
-
 
   const addHealthMetric = async () => {
     if (!healthMetric.value || isNaN(healthMetric.value)) {
@@ -159,24 +93,12 @@ useEffect(() => {
       id: `${healthMetric.type.toLowerCase()}-${Date.now()}`,
       type: healthMetric.type,
       value: parseFloat(healthMetric.value),
-      timestamp: new Date().toLocaleString(),
+      timestamp: new Date().toISOString(), // ISO format for reliable parsing
     };
     try {
       await saveHealthMetricsApi([newMetric]);
       Alert.alert("Health metric saved successfully");
       setHealthData([...healthData, newMetric]);
-      const abnormal = {
-        "Heart Rate": newMetric.value < 30 || newMetric.value > 200,
-        "Blood Pressure": newMetric.value < 80 || newMetric.value > 180,
-        Glucose: newMetric.value < 70 || newMetric.value > 200,
-        Weight: newMetric.value < 20 || newMetric.value > 300,
-        "Oxygen Level": newMetric.value < 80 || newMetric.value > 100,
-      };
-      if (abnormal[healthMetric.type]) {
-        Alert.alert("Warning!", `Your ${healthMetric.type} value seems unusual. Please consult your doctor.`, [
-          { text: "OK", style: "default" }
-        ]);
-      }
       setHealthMetric({ type: "Heart Rate", value: "" });
     } catch (error) {
       console.error("Error saving health metric:", error);
@@ -186,54 +108,71 @@ useEffect(() => {
     }
   };
 
- const deleteMedicine = (id:any) => {
-    Alert.alert("Delete Medicine", "Are you sure you want to remove this medicine?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        onPress: async () => { // Make the onPress function async
-          try {
-          setLoaderVisible(true);
-            await deleteMedicineApi(id); // Call the delete API
-            setMedicines(medicines.filter((m) => m.id !== id)); // Update local state on success
-            setLoaderVisible(false);
-            Alert.alert("Success", "Medicine deleted successfully.");
-          } catch (error) {
-            console.error("Error deleting medicine:", error);
-            Alert.alert("Error", "Failed to delete medicine. Please try again.");
-          }
-        },
-        style: "destructive",
-      },
-    ]);
-  };
+  // Prepare chart data for selected metric
+  const [selectedChartMetric, setSelectedChartMetric] = useState("Heart Rate");
+  const [selectedPeriod, setSelectedPeriod] = useState("Last 7 Days");
+  const chartData = React.useMemo(() => {
+    // Filter healthData for selected metric
+    const filtered = healthData.filter(item => item.type === selectedChartMetric);
+    // Sort by timestamp
+    filtered.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    let labels = [];
+    let data = [];
+    if (selectedPeriod === "Last 7 Days") {
+      // Last 7 days
+      const now = new Date();
+      for (let i = 6; i >= 0; i--) {
+        const day = new Date(now);
+        day.setHours(0,0,0,0);
+        day.setDate(now.getDate() - i);
+        const dayStr = `${day.getDate()}/${day.getMonth() + 1}`;
+        labels.push(dayStr);
+        // Find all metrics for this day
+        const dayMetrics = filtered.filter(item => {
+          const itemDate = new Date(item.timestamp);
+          itemDate.setHours(0,0,0,0);
+          return itemDate.getDate() === day.getDate() && itemDate.getMonth() === day.getMonth() && itemDate.getFullYear() === day.getFullYear();
+        });
+        // Average if multiple entries
+        const avg = dayMetrics.length > 0 ? dayMetrics.reduce((sum, item) => sum + item.value, 0) / dayMetrics.length : 0;
+        data.push(avg);
+      }
+    } else {
+      // Last 4 weeks (Month)
+      const now = new Date();
+      for (let i = 3; i >= 0; i--) {
+        const weekStart = new Date(now);
+        weekStart.setHours(0,0,0,0);
+        weekStart.setDate(now.getDate() - i * 7);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+        const weekStr = `Week ${4 - i}`;
+        labels.push(weekStr);
+        // Find all metrics for this week
+        const weekMetrics = filtered.filter(item => {
+          const itemDate = new Date(item.timestamp);
+          itemDate.setHours(0,0,0,0);
+          return itemDate >= weekStart && itemDate <= weekEnd;
+        });
+        // Average if multiple entries
+        const avg = weekMetrics.length > 0 ? weekMetrics.reduce((sum, item) => sum + item.value, 0) / weekMetrics.length : 0;
+        data.push(avg);
+      }
+    }
+    return { labels, datasets: [{ data }] };
+  }, [healthData, selectedChartMetric, selectedPeriod]);
 
-
-  const navigateToReminder = (medicine) => {
-    navigation.navigate("MedicationReminder", {
-      newMedicineFromHealth: {
-        id: medicine.id,
-        name: medicine.name,
-        dosage: `${medicine.dailyIntake} pill(s) of ${medicine.dosage}`,
-        initialQuantity: medicine.initialQuantity,
-        currentQuantity: medicine.currentQuantity,
-        dailyIntake: medicine.dailyIntake,
-        fromHealthTracking: true,
-      },
-      medicines: medicines, // Pass the full medicines array
-    });
-  };
-
-  // Dynamic icon mapping for health metrics
-  const getMetricIcon = (type) => {
-    const icons = {
-      "Heart Rate": "favorite",
-      "Blood Pressure": "monitor-heart",
-      Glucose: "bloodtype",
-      Weight: "scale",
-      "Oxygen Level": "air",
-    };
-    return icons[type] || "favorite";
+  const chartConfig = {
+    backgroundGradientFrom: '#FFF8E1',
+    backgroundGradientTo: '#FFF8E1',
+    color: (opacity = 1) => `rgba(44, 62, 80, ${opacity})`,
+    labelColor: (opacity = 1) => `rgba(44, 62, 80, ${opacity})`,
+    strokeWidth: 2,
+    propsForDots: {
+      r: '4',
+      strokeWidth: '2',
+      stroke: '#0288D1',
+    },
   };
 
   return (
@@ -244,62 +183,12 @@ useEffect(() => {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <MaterialIcons name="arrow-back" size={28} color="#2E2E2E" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>My Health Tracker</Text>
+          <Text style={styles.headerTitle}>Health Tracking</Text>
           <View style={styles.headerPlaceholder} />
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Add a Medicine</Text>
-          <View style={styles.inputContainer}>
-            <MaterialIcons name="medication" size={28} color="#D32F2F" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Medicine Name"
-              value={medicineName}
-              onChangeText={setMedicineName}
-              placeholderTextColor="#666"
-            />
-          </View>
-          <View style={styles.inputContainer}>
-            <MaterialIcons name="medication" size={28} color="#D32F2F" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Dosage (in mg)"
-              keyboardType="numeric"
-              value={dosage}
-              onChangeText={setDosage}
-              placeholderTextColor="#666"
-            />
-          </View>
-          <View style={styles.inputContainer}>
-            <MaterialIcons name="inventory" size={28} color="#D32F2F" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Initial Quantity"
-              keyboardType="numeric"
-              value={initialQuantity}
-              onChangeText={setInitialQuantity}
-              placeholderTextColor="#666"
-            />
-          </View>
-          <View style={styles.inputContainer}>
-            <MaterialIcons name="medication" size={28} color="#D32F2F" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Daily Intake"
-              keyboardType="numeric"
-              value={dailyIntake}
-              onChangeText={setDailyIntake}
-              placeholderTextColor="#666"
-            />
-          </View>
-          <TouchableOpacity style={styles.addButton} onPress={addMedicine}>
-            <Text style={styles.addButtonText}>Add Medicine</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Track Health Metric</Text>
+          <Text style={styles.sectionTitle}>Add Health Metric</Text>
           <CustomDropdown
             label="Select Metric"
             value={healthMetric.type}
@@ -318,43 +207,45 @@ useEffect(() => {
             />
           </View>
           <TouchableOpacity style={styles.addButton} onPress={addHealthMetric}>
-            <Text style={styles.addButtonText}>Save Health Metric</Text>
+            <Text style={styles.addButtonText}>Save Metric</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>My Health History</Text>
+          <Text style={styles.sectionTitle}>Visualize Metrics</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
+            <CustomDropdown
+              label="Metric"
+              value={selectedChartMetric}
+              options={metricOptions}
+              onSelect={setSelectedChartMetric}
+            />
+            <CustomDropdown
+              label="Period"
+              value={selectedPeriod}
+              options={["Last 7 Days", "Month"]}
+              onSelect={setSelectedPeriod}
+            />
+          </View>
+          <LineChart
+            data={chartData}
+            width={Dimensions.get('window').width - 60}
+            height={220}
+            chartConfig={chartConfig}
+            bezier
+            style={{ borderRadius: 12 }}
+          />
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Metric History</Text>
           {healthData.length === 0 ? (
             <Text style={styles.emptyText}>No health metrics recorded yet.</Text>
           ) : (
             healthData.map((item) => (
               <View key={item.id} style={styles.metricItem}>
-                <MaterialIcons name={getMetricIcon(item.type)} size={28} color="#D32F2F" style={styles.itemIcon} />
+                <MaterialIcons name="favorite" size={28} color="#D32F2F" style={styles.itemIcon} />
                 <Text style={styles.metricText}>{item.type}: {item.value} ({item.timestamp})</Text>
-              </View>
-            ))
-          )}
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>My Medicines</Text>
-          {medicines.length === 0 ? (
-            <Text style={styles.emptyText}>No medicines added yet.</Text>
-          ) : (
-            medicines.map((item) => (
-              <View key={item.id} style={styles.medicineItem}>
-                <MaterialIcons name="medication" size={28} color="#D32F2F" style={styles.itemIcon} />
-                <Text style={styles.medicineText}>
-                  {item.name} ({item.dosage}) - {item.dailyIntake} pill/day
-                </Text>
-                <View style={styles.medicineActions}>
-                  <TouchableOpacity onPress={() => navigateToReminder(item)} style={styles.actionButton}>
-                    <MaterialIcons name="notifications" size={28} color="#0288D1" />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => deleteMedicine(item.id)} style={styles.actionButton}>
-                    <MaterialIcons name="delete" size={28} color="#D32F2F" />
-                  </TouchableOpacity>
-                </View>
               </View>
             ))
           )}
@@ -426,13 +317,18 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     backgroundColor: "#F5F5F5",
-    padding: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderRadius: 12,
-    marginBottom: 15,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+    minWidth: 120,
   },
   dropdownText: {
-    fontSize: 18,
+    fontSize: 15,
     color: "#2E2E2E",
+    fontWeight: "500",
   },
   modalOverlay: {
     flex: 1,

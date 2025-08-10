@@ -18,8 +18,7 @@ import FamilyAnalysis from '../screens/FamilyAnalysis';
 import MessagesScreen from '../screens/MessagesScreen'; // ✅ Make sure this exists and is a valid React component
 import FamilySchedule from '../screens/FamilySchedule';
 import ProfileSetupSummary from '../screens/ProfileSetupSummary';
-import TaskReminderScreen from '../screens/TaskReminderScreen';
-import { createStackNavigator } from '@react-navigation/stack';
+import TabNavigator from './TabNavigator';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -36,19 +35,19 @@ const AuthNavigator = () => {
         component={ProfileSetupSummary}
         options={{ headerShown: false }}
       />
+      {/* Main Tab Navigation */}
+      <Stack.Screen name="MainTabs" component={TabNavigator} />
+      
+      {/* Other Screens */}
       <Stack.Screen name="Dashboard" component={DashboardScreen} />
-      <Stack.Screen name="HealthTrackingScreen" component={HealthTrackingScreen} />
-       <Stack.Screen name="FamilyMemberScreen" component={FamilyMemberScreen} />
-       <Stack.Screen name="ProfileScreen" component={ProfileScreen} />
-       <Stack.Screen name="MedicationReminder" component={MedicationReminder} />
-        <Stack.Screen name="ForgotPasswordScreen" component={ForgotPasswordScreen} />
-        <Stack.Screen name="FamilyDashboard" component={FamilyDashboard} />
-        <Stack.Screen name="FamilyAnalysis" component={FamilyAnalysis} />
-        <Stack.Screen name="FamilyMemberProfile" component={FamilyMemberProfile} />
-        <Stack.Screen name='FamilySchedule' component={FamilySchedule} />
-        <Stack.Screen name="FamilyMemberProfileSetup" component={FamilyMemberProfileSetup} />
-        <Stack.Screen name="MessagesScreen" component={MessagesScreen} />
-      <Stack.Screen name="TaskReminderScreen" component={TaskReminderScreen} />
+      <Stack.Screen name="ProfileScreen" component={ProfileScreen} />
+      <Stack.Screen name="ForgotPasswordScreen" component={ForgotPasswordScreen} />
+      <Stack.Screen name="FamilyDashboard" component={FamilyDashboard} />
+      <Stack.Screen name="FamilyAnalysis" component={FamilyAnalysis} />
+      <Stack.Screen name="FamilyMemberProfile" component={FamilyMemberProfile} />
+      <Stack.Screen name="FamilySchedule" component={FamilySchedule} />
+      <Stack.Screen name="FamilyMemberProfileSetup" component={FamilyMemberProfileSetup} />
+      <Stack.Screen name="MessagesScreen" component={MessagesScreen} />
     </Stack.Navigator>
   );
 };
@@ -62,11 +61,8 @@ type RootStackParamList = {
   SignUpScreen: undefined;
   ProfileSetup: undefined;
   ProfileSetupSummary: { formData: { [key: string]: string | string[] } };
-  Dashboard: undefined;
-  HealthTrackingScreen: undefined;
-  FamilyMemberScreen: undefined;
+  MainTabs: undefined;
   ProfileScreen: undefined;
-  MedicationReminder: undefined;
   ForgotPasswordScreen: undefined;
   FamilyDashboard: undefined;
   FamilyAnalysis: undefined;
@@ -74,5 +70,4 @@ type RootStackParamList = {
   FamilySchedule: undefined;
   FamilyMemberProfileSetup: undefined;
   MessagesScreen: undefined;
-  TaskReminderScreen: undefined;
 };

@@ -108,7 +108,7 @@ const OtpScreen: React.FC<OtpScreenProps> = ({ route, navigation }) => {
         }
         navigation.replace('ProfileSetup');
       } else {
-        navigation.replace('Dashboard');
+        navigation.replace('MainTabs');
       }
     } catch (error) {
       console.error('Invalid code.', error);
