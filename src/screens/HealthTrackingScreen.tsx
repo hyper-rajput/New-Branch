@@ -1,412 +1,564 @@
 import React, { useState, useEffect } from "react";
-import { LineChart } from 'react-native-chart-kit';
-import{  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  Alert,
-  ScrollView,
-  Keyboard,
-  Modal,
-  Dimensions,
-} from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
-import {saveMedicinesApi, saveHealthMetricsApi, GetHealthMetricsApi, GetMedicines, deleteMedicineApi} from '../services/api'; // Import GetMedicinesApi
-import FullScreenLoader from '../components/FullScreenLoader';
-
-// Custom Dropdown Component for Health Metrics
-const CustomDropdown = ({ label, value, options, onSelect }) => {
-  const [visible, setVisible] = useState(false);
-  return (
-    <>
-      <TouchableOpacity style={styles.dropdown} onPress={() => setVisible(true)}>
-        <Text style={styles.dropdownText}>{value || label}</Text>
-        <MaterialIcons name="arrow-drop-down" size={28} color="#2E2E2E" />
-      </TouchableOpacity>
-      <Modal transparent visible={visible} animationType="fade">
-        <TouchableOpacity style={styles.modalOverlay} onPress={() => setVisible(false)}>
-          <View style={styles.modalContent}>
-            {options.map((option) => (
-              <TouchableOpacity
-                key={option}
-                style={styles.modalItem}
-                onPress={() => {
-                  onSelect(option);
-                  setVisible(false);
-                }}
-              >
-                <Text style={styles.modalItemText}>{option}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </TouchableOpacity>
-      </Modal>
-    </>
-  );
-};
-
+import { saveHealthMetricsApi } from '../services/api';
 
 const HealthTrackingScreen = ({ navigation }) => {
+  const [healthScore, setHealthScore] = useState("0%");
+  const [readingsCount, setReadingsCount] = useState(0);
+  const [selectedTab, setSelectedTab] = useState("BP");
+  const [history, setHistory] = useState([
+    { value: "120/80 mmHg", timestamp: "1/9/2024, 8:30:00 AM", status: "normal" },
+  ]);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [metricType, setMetricType] = useState("Blood Pressure");
+  const [metricValue, setMetricValue] = useState("");
+  const [note, setNote] = useState("");
+  const metricOptions = ["Blood Pressure", "Heart Rate", "Weight"];
 
-  type HealthData = {
-    id: any;
-    type: any;
-    value: any;
-    timestamp: string;
+  const handleSync = () => {
+    console.log("Syncing with friends...");
   };
-  const [healthMetric, setHealthMetric] = useState({ type: "Heart Rate", value: "" });
-  const [healthData, setHealthData] = useState<HealthData[]>([]);
-  const [loaderVisible, setLoaderVisible] = useState(false);
-  const metricOptions = ["Heart Rate", "Blood Pressure", "Glucose", "Weight", "Oxygen Level"];
 
-  useEffect(() => {
-    const fetchHealthMetrics = async () => {
-      try {
-        const response = await GetHealthMetricsApi();
-        if (response && Array.isArray(response)) {
-          setHealthData(response.map(item => ({
-            id: item.id,
-            type: item.metric,
-            value: item.data,
-            timestamp: item.timestamp
-          })));
-        }
-      } catch (error) {
-        console.error("Error fetching health metrics:", error);
-        Alert.alert("Error", "Failed to load health metrics. Please try again later.");
-      }
-    };
-    fetchHealthMetrics();
-  }, []);
+  const handleAddHealthReading = () => {
+    setModalVisible(true);
+  };
 
-  const addHealthMetric = async () => {
-    if (!healthMetric.value || isNaN(healthMetric.value)) {
-      Alert.alert("Oops!", `Please enter a valid number for ${healthMetric.type}.`, [
-        { text: "OK", style: "default" }
-      ]);
+  const handleManageSharing = () => {
+    console.log("Managing sharing...");
+  };
+
+  const getHistoryTitle = () => {
+    switch (selectedTab) {
+      case "BP":
+        return "Blood Pressure History";
+      case "Heart":
+        return "Heart Rate History";
+      case "Weight":
+        return "Weight History";
+      default:
+        return "History";
+    }
+  };
+
+  const handleAddReading = async () => {
+    if (!metricValue || isNaN(parseInt(metricValue.split('/')[0]) || !metricValue)) {
+      alert("Please enter a valid value.");
       return;
     }
-    setLoaderVisible(true);
+
     const newMetric = {
-      id: `${healthMetric.type.toLowerCase()}-${Date.now()}`,
-      type: healthMetric.type,
-      value: parseFloat(healthMetric.value),
-      timestamp: new Date().toISOString(), // ISO format for reliable parsing
+      id: `${metricType.toLowerCase()}-${Date.now()}`,
+      type: metricType,
+      value: metricValue,
+      timestamp: new Date().toISOString(),
+      note: note || "",
+      status: "normal", // Default status, can be updated based on logic
     };
+
     try {
       await saveHealthMetricsApi([newMetric]);
-      Alert.alert("Health metric saved successfully");
-      setHealthData([...healthData, newMetric]);
-      setHealthMetric({ type: "Heart Rate", value: "" });
+      setHistory([...history, newMetric]);
+      setReadingsCount(readingsCount + 1);
+      setModalVisible(false);
+      setMetricValue("");
+      setNote("");
     } catch (error) {
       console.error("Error saving health metric:", error);
-    } finally {
-      setLoaderVisible(false);
-      Keyboard.dismiss();
+      alert("Failed to save health metric. Please try again.");
     }
-  };
-
-  // Prepare chart data for selected metric
-  const [selectedChartMetric, setSelectedChartMetric] = useState("Heart Rate");
-  const [selectedPeriod, setSelectedPeriod] = useState("Last 7 Days");
-  const chartData = React.useMemo(() => {
-    // Filter healthData for selected metric
-    const filtered = healthData.filter(item => item.type === selectedChartMetric);
-    // Sort by timestamp
-    filtered.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    let labels = [];
-    let data = [];
-    if (selectedPeriod === "Last 7 Days") {
-      // Last 7 days
-      const now = new Date();
-      for (let i = 6; i >= 0; i--) {
-        const day = new Date(now);
-        day.setHours(0,0,0,0);
-        day.setDate(now.getDate() - i);
-        const dayStr = `${day.getDate()}/${day.getMonth() + 1}`;
-        labels.push(dayStr);
-        // Find all metrics for this day
-        const dayMetrics = filtered.filter(item => {
-          const itemDate = new Date(item.timestamp);
-          itemDate.setHours(0,0,0,0);
-          return itemDate.getDate() === day.getDate() && itemDate.getMonth() === day.getMonth() && itemDate.getFullYear() === day.getFullYear();
-        });
-        // Average if multiple entries
-        const avg = dayMetrics.length > 0 ? dayMetrics.reduce((sum, item) => sum + item.value, 0) / dayMetrics.length : 0;
-        data.push(avg);
-      }
-    } else {
-      // Last 4 weeks (Month)
-      const now = new Date();
-      for (let i = 3; i >= 0; i--) {
-        const weekStart = new Date(now);
-        weekStart.setHours(0,0,0,0);
-        weekStart.setDate(now.getDate() - i * 7);
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekStart.getDate() + 6);
-        const weekStr = `Week ${4 - i}`;
-        labels.push(weekStr);
-        // Find all metrics for this week
-        const weekMetrics = filtered.filter(item => {
-          const itemDate = new Date(item.timestamp);
-          itemDate.setHours(0,0,0,0);
-          return itemDate >= weekStart && itemDate <= weekEnd;
-        });
-        // Average if multiple entries
-        const avg = weekMetrics.length > 0 ? weekMetrics.reduce((sum, item) => sum + item.value, 0) / weekMetrics.length : 0;
-        data.push(avg);
-      }
-    }
-    return { labels, datasets: [{ data }] };
-  }, [healthData, selectedChartMetric, selectedPeriod]);
-
-  const chartConfig = {
-    backgroundGradientFrom: '#FFF8E1',
-    backgroundGradientTo: '#FFF8E1',
-    color: (opacity = 1) => `rgba(44, 62, 80, ${opacity})`,
-    labelColor: (opacity = 1) => `rgba(44, 62, 80, ${opacity})`,
-    strokeWidth: 2,
-    propsForDots: {
-      r: '4',
-      strokeWidth: '2',
-      stroke: '#0288D1',
-    },
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <FullScreenLoader visible={loaderVisible} />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
-            <MaterialIcons name="arrow-back" size={28} color="#2E2E2E" />
+            <MaterialIcons name="arrow-back" size={24} color="#000" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Health Tracking</Text>
-          <View style={styles.headerPlaceholder} />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Add Health Metric</Text>
-          <CustomDropdown
-            label="Select Metric"
-            value={healthMetric.type}
-            options={metricOptions}
-            onSelect={(type) => setHealthMetric({ ...healthMetric, type })}
-          />
-          <View style={styles.inputContainer}>
-            <MaterialIcons name="favorite" size={28} color="#D32F2F" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder={`Enter ${healthMetric.type}`}
-              keyboardType="numeric"
-              value={healthMetric.value}
-              onChangeText={(value) => setHealthMetric({ ...healthMetric, value })}
-              placeholderTextColor="#666"
-            />
-          </View>
-          <TouchableOpacity style={styles.addButton} onPress={addHealthMetric}>
-            <Text style={styles.addButtonText}>Save Metric</Text>
+          <Text style={styles.headerTitle}>Health Tracker</Text>
+          <TouchableOpacity onPress={handleSync}>
+            <MaterialIcons name="sync" size={24} color="#000" />
           </TouchableOpacity>
         </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Visualize Metrics</Text>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
-            <CustomDropdown
-              label="Metric"
-              value={selectedChartMetric}
-              options={metricOptions}
-              onSelect={setSelectedChartMetric}
-            />
-            <CustomDropdown
-              label="Period"
-              value={selectedPeriod}
-              options={["Last 7 Days", "Month"]}
-              onSelect={setSelectedPeriod}
-            />
+        <Text style={styles.subHeader}>{readingsCount} readings today - Health score: {healthScore}</Text>
+        <View style={styles.healthScoreContainer}>
+          <Text style={styles.healthScoreLabel}>Today's Health Score</Text>
+          <View style={styles.healthScoreContent}>
+            <Text style={styles.healthScoreValue}>{healthScore}</Text>
+            <View style={styles.trendIcon}>
+              <MaterialIcons name="trending-up" size={20} color="#4CAF50" />
+            </View>
           </View>
-          <LineChart
-            data={chartData}
-            width={Dimensions.get('window').width - 60}
-            height={220}
-            chartConfig={chartConfig}
-            bezier
-            style={{ borderRadius: 12 }}
-          />
+          <View style={styles.progressBar}>
+            <View style={styles.progress} />
+          </View>
+          <Text style={styles.readingsStatus}>{readingsCount} of {readingsCount} readings normal</Text>
         </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Metric History</Text>
-          {healthData.length === 0 ? (
-            <Text style={styles.emptyText}>No health metrics recorded yet.</Text>
-          ) : (
-            healthData.map((item) => (
-              <View key={item.id} style={styles.metricItem}>
-                <MaterialIcons name="favorite" size={28} color="#D32F2F" style={styles.itemIcon} />
-                <Text style={styles.metricText}>{item.type}: {item.value} ({item.timestamp})</Text>
+        <View style={styles.metricsContainer}>
+          <View style={[styles.metricCard, styles.cardWeight]}>
+            <MaterialIcons name="monitor-weight" size={24} color="#2196F3" />
+            <Text style={styles.metricValue}>72.5 kg</Text>
+            <Text style={styles.metricLabel}>Current Weight</Text>
+          </View>
+          <View style={[styles.metricCard, styles.cardHeartRate]}>
+            <MaterialIcons name="favorite" size={24} color="#D32F2F" />
+            <Text style={styles.metricValue}>72 bpm</Text>
+            <Text style={styles.metricLabel}>Heart Rate</Text>
+          </View>
+          <View style={[styles.metricCard, styles.cardBloodPressure]}>
+            <MaterialIcons name="bloodtype" size={24} color="#AB47BC" />
+            <Text style={styles.metricValue}>120/80</Text>
+            <Text style={styles.metricLabel}>Blood Pressure</Text>
+          </View>
+          <View style={[styles.metricCard, styles.cardSteps]}>
+            <MaterialIcons name="directions-walk" size={24} color="#FF9800" />
+            <Text style={styles.metricValue}>8420</Text>
+            <Text style={styles.metricLabel}>Steps Today</Text>
+          </View>
+        </View>
+        <TouchableOpacity style={styles.addButton} onPress={handleAddHealthReading}>
+          <Text style={styles.addButtonText}>+ Add Health Reading</Text>
+        </TouchableOpacity>
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            style={[styles.tab, selectedTab === "BP" && styles.selectedTab]}
+            onPress={() => setSelectedTab("BP")}
+          >
+            <Text style={styles.tabText}>BP</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, selectedTab === "Heart" && styles.selectedTab]}
+            onPress={() => setSelectedTab("Heart")}
+          >
+            <Text style={styles.tabText}>Heart</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, selectedTab === "Weight" && styles.selectedTab]}
+            onPress={() => setSelectedTab("Weight")}
+          >
+            <Text style={styles.tabText}>Weight</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.historySection}>
+          <Text style={styles.historyTitle}>
+            <MaterialIcons name="favorite" size={20} color="#D32F2F" /> {getHistoryTitle()}
+          </Text>
+          {history.map((item, index) => (
+            <View key={index} style={styles.historyItem}>
+              <Text style={styles.historyValue}>{item.value}</Text>
+              <Text style={styles.historyTimestamp}>{item.timestamp}</Text>
+              <View style={styles.historyStatus}>
+                <Text style={styles.statusText}>{item.status}</Text>
               </View>
-            ))
-          )}
+            </View>
+          ))}
+        </View>
+        <View style={styles.sharingContainer}>
+          <View style={styles.sharingIcon}>
+            <MaterialIcons name="people" size={20} color="#4CAF50" />
+          </View>
+          <Text style={styles.sharingTitle}>Share with Wellness Partners</Text>
+          <Text style={styles.sharingDescription}>
+            Your connected friends can view your health trends and provide support
+          </Text>
+          <View style={styles.sharingFriends}>
+            <Text style={styles.friendName}>SJ</Text>
+            <Text style={styles.friendName}>MC</Text>
+            <Text style={styles.friendMore}>+3</Text>
+          </View>
+          <TouchableOpacity style={styles.manageButton} onPress={handleManageSharing}>
+            <Text style={styles.manageText}>Manage Sharing</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add Health Metric</Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <MaterialIcons name="close" size={24} color="#000" />
+              </TouchableOpacity>
+            </View>
+            <CustomDropdown
+              label="Select Metric"
+              value={metricType}
+              options={metricOptions}
+              onSelect={setMetricType}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder={`Enter ${metricType.toLowerCase()} value`}
+              value={metricValue}
+              onChangeText={setMetricValue}
+              keyboardType="numeric"
+              placeholderTextColor="#757575"
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Note (optional)"
+              value={note}
+              onChangeText={setNote}
+              placeholderTextColor="#757575"
+            />
+            <TouchableOpacity style={styles.addReadingButton} onPress={handleAddReading}>
+              <Text style={styles.addReadingText}>Add Reading</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
+  );
+};
+
+// Custom Dropdown Component
+const CustomDropdown = ({ label, value, options, onSelect }) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <View style={styles.dropdownContainer}>
+      <TouchableOpacity style={styles.dropdown} onPress={() => setIsOpen(!isOpen)}>
+        <Text style={styles.dropdownText}>{value}</Text>
+        <MaterialIcons name={isOpen ? "arrow-drop-up" : "arrow-drop-down"} size={24} color="#757575" />
+      </TouchableOpacity>
+      {isOpen && (
+        <View style={styles.dropdownOptions}>
+          {options.map((option) => (
+            <TouchableOpacity
+              key={option}
+              style={styles.dropdownOption}
+              onPress={() => {
+                onSelect(option);
+                setIsOpen(false);
+              }}
+            >
+              <Text style={styles.dropdownOptionText}>{option}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FFF8E1", // Warm cream background for comfort
+    backgroundColor: '#F5F5F5',
   },
   scrollContent: {
     padding: 20,
     paddingBottom: 40,
   },
   header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
   },
   headerTitle: {
     fontSize: 24,
-    fontWeight: "700",
-    color: "#2E2E2E",
+    fontWeight: 'bold',
+    color: '#000',
   },
-  headerPlaceholder: {
-    width: 28, // Maintains balance in header layout
-  },
-  section: {
-    backgroundColor: "#FFF",
-    borderRadius: 12,
-    padding: 20,
+  subHeader: {
+    fontSize: 14,
+    color: '#757575',
     marginBottom: 20,
-    elevation: 2,
-    shadowColor: "#000",
+  },
+  healthScoreContainer: {
+    backgroundColor: '#E0F7FA',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  healthScoreLabel: {
+    fontSize: 16,
+    color: '#757575',
+    marginBottom: 5,
+  },
+  healthScoreContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  healthScoreValue: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#000',
+    marginRight: 10,
+  },
+  trendIcon: {
+    backgroundColor: '#E8F5E9',
+    borderRadius: 20,
+    padding: 5,
+  },
+  progressBar: {
+    width: '100%',
+    height: 10,
+    backgroundColor: '#B0BEC5',
+    borderRadius: 5,
+    marginVertical: 10,
+  },
+  progress: {
+    width: '0%',
+    height: '100%',
+    backgroundColor: '#4CAF50',
+    borderRadius: 5,
+  },
+  readingsStatus: {
+    fontSize: 14,
+    color: '#757575',
+  },
+  metricsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  metricCard: {
+    borderRadius: 12,
+    padding: 15,
+    width: '48%',
+    alignItems: 'center',
+    marginBottom: 10,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
+    elevation: 2,
   },
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#2E2E2E",
-    marginBottom: 15,
+  cardWeight: {
+    backgroundColor: '#BBDEFB',
   },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F5F5F5",
-    borderRadius: 12,
-    marginBottom: 15,
-    paddingHorizontal: 10,
+  cardHeartRate: {
+    backgroundColor: '#FFCDD2',
   },
-  inputIcon: {
-    marginRight: 10,
+  cardBloodPressure: {
+    backgroundColor: '#E1BEE7',
   },
-  input: {
-    flex: 1,
-    fontSize: 18,
-    paddingVertical: 12,
-    color: "#2E2E2E",
+  cardSteps: {
+    backgroundColor: '#FFE0B2',
   },
-  dropdown: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "#F5F5F5",
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
-    minWidth: 120,
+  metricValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#757575',
+    marginVertical: 10,
   },
-  dropdownText: {
-    fontSize: 15,
-    color: "#2E2E2E",
-    fontWeight: "500",
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    padding: 30,
-  },
-  modalContent: {
-    backgroundColor: "#FFF",
-    borderRadius: 12,
-    paddingVertical: 10,
-  },
-  modalItem: {
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: "#EEE",
-  },
-  modalItemText: {
-    fontSize: 18,
-    color: "#2E2E2E",
+  metricLabel: {
+    fontSize: 14,
+    color: '#757575',
   },
   addButton: {
-    backgroundColor: "#0288D1",
-    paddingVertical: 15,
+    backgroundColor: '#212121',
     borderRadius: 12,
-    alignItems: "center",
-    elevation: 3,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
+    padding: 15,
+    alignItems: 'center',
+    marginBottom: 20,
   },
   addButtonText: {
-    color: "#FFF",
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: '#E0E0E0',
+    borderRadius: 12,
+    padding: 5,
+    marginBottom: 20,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 10,
+  },
+  selectedTab: {
+    backgroundColor: '#FFF',
+  },
+  tabText: {
+    fontSize: 16,
+    color: '#757575',
+  },
+  historySection: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 20,
+  },
+  historyTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#757575',
+    marginBottom: 10,
+  },
+  historyItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
+  },
+  historyValue: {
+    fontSize: 16,
+    color: '#000',
+  },
+  historyTimestamp: {
+    fontSize: 14,
+    color: '#757575',
+  },
+  historyStatus: {
+    backgroundColor: '#E8F5E9',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  statusText: {
+    fontSize: 14,
+    color: '#4CAF50',
+  },
+  sharingContainer: {
+    backgroundColor: '#E8F5E9',
+    borderRadius: 12,
+    padding: 15,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  sharingIcon: {
+    marginBottom: 5,
+  },
+  sharingTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#000',
+    marginBottom: 5,
+  },
+  sharingDescription: {
+    fontSize: 14,
+    color: '#4CAF50',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  sharingFriends: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  friendName: {
+    fontSize: 14,
+    color: '#4CAF50',
+    marginRight: 5,
+    backgroundColor: '#C8E6C9',
+    borderRadius: 10,
+    padding: 5,
+  },
+  friendMore: {
+    fontSize: 14,
+    color: '#4CAF50',
+    marginLeft: 5,
+  },
+  manageButton: {
+    backgroundColor: '#C8E6C9',
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+  },
+  manageText: {
+    fontSize: 14,
+    color: '#4CAF50',
+    fontWeight: 'bold',
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 20,
+    width: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
     fontSize: 20,
-    fontWeight: "600",
+    fontWeight: 'bold',
+    color: '#000',
   },
-  metricItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F5F5F5",
-    padding: 12,
+  dropdownContainer: {
+    marginBottom: 15,
+  },
+  dropdown: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#E0E0E0',
+    borderRadius: 8,
+    padding: 10,
+  },
+  dropdownText: {
+    fontSize: 16,
+    color: '#757575',
+  },
+  dropdownOptions: {
+    backgroundColor: '#FFF',
+    borderRadius: 8,
+    marginTop: 5,
+    elevation: 2,
+  },
+  dropdownOption: {
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
+  },
+  dropdownOptionText: {
+    fontSize: 16,
+    color: '#000',
+  },
+  input: {
+    height: 40,
+    borderColor: '#E0E0E0',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    marginBottom: 15,
+    backgroundColor: '#F5F5F5',
+    fontSize: 16,
+    color: '#000',
+  },
+  addReadingButton: {
+    backgroundColor: '#212121',
     borderRadius: 12,
-    marginBottom: 10,
+    padding: 15,
+    alignItems: 'center',
   },
-  medicineItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F5F5F5",
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 10,
-  },
-  itemIcon: {
-    marginRight: 12,
-  },
-  medicineText: {
-    flex: 1,
-    fontSize: 18,
-    color: "#2E2E2E",
-  },
-  metricText: {
-    flex: 1,
-    fontSize: 18,
-    color: "#2E2E2E",
-  },
-  emptyText: {
-    fontSize: 18,
-    color: "#666",
-    textAlign: "center",
-    marginVertical: 20,
-  },
-  medicineActions: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  actionButton: {
-    marginLeft: 15,
+  addReadingText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 

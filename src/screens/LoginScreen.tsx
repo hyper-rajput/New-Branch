@@ -9,6 +9,7 @@ import {
   Platform,
   Alert,
   SafeAreaView,
+  ScrollView,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { Image, Dimensions } from "react-native";
@@ -56,82 +57,90 @@ const signInWithPhoneNumber = async (number) => {
   const { width } = Dimensions.get('window');
   return (
     <SafeAreaView style={styles.container}>
-      {/* Top landing image (flexible) */}
-      <View style={{ width: '100%', height: width * 1.1 }}>
-        <Image
-          source={require('../../resources/LandingPageImage.jpg')}
-          style={{
-            width: '100%',
-            height: '100%',
-            resizeMode: 'cover',
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-          }}
-        />
-        <LinearGradient
-          colors={['rgba(255,255,255,0.0)', 'rgba(255,255,255,0.7)', 'rgba(255,255,255,1)']}
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            top: 0,
-            bottom: 0,
-          }}
-          start={{ x: 0.5, y: 0.2 }}
-          end={{ x: 0.5, y: 1 }}
-        />
-      </View>
-      <View style={{ alignItems: 'center', marginTop: -width * 0.18, marginBottom: width * 0.001 }}>
-        <Image
-          source={require('../../resources/ElderIcon.png')}
-          style={{
-            width: width * 0.18,
-            height: width * 0.18,
-            resizeMode: 'contain',
-          }}
-        />
-      </View>
-      <View style={[styles.innerContainer, { flex: 1, justifyContent: 'flex-start', paddingTop: 0, paddingBottom: 0, width: '100%' }]}> 
-        <Text style={styles.logoText}>Lumia</Text>
-        <Text style={styles.heading}>India's last minute app</Text>
-        <Text style={styles.subheading}>Log in or sign up</Text>
-        <View style={styles.inputRow}>
-          <Text style={styles.countryCode}>+91</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter mobile number"
-            placeholderTextColor="#A0A0A0"
-            keyboardType="number-pad"
-            maxLength={10}
-            value={mobile}
-            onChangeText={text => {
-              setMobile(text.replace(/[^0-9]/g, ""));
-              if (error) setError("");
-            }}
-          />
-        </View>
-        {!!error && <Text style={styles.errorText}>{error}</Text>}
-        <TouchableOpacity
-          style={[
-            styles.continueButton,
-            { backgroundColor: mobile.length === 10 ? '#4CAF50' : '#A3A3A3' },
-          ]}
-          onPress={handleContinue}
-        >
-          <Text style={styles.continueButtonText}>Continue</Text>
-        </TouchableOpacity>
-        <Text style={styles.orText}>OR</Text>
-        <TouchableOpacity style={styles.skipLoginButton} onPress={handleFamilyLogin}>
-          <Text style={styles.skipLoginButtonText}>Go for Family Login</Text>
-        </TouchableOpacity>
-      </View>
-      <View style={[styles.footer, { marginBottom: Platform.OS === 'ios' ? 8 : 4, width: '10%' }]}> 
-        <Text style={styles.footerText}>
-          By continuing, you agree to our <Text style={styles.link}>Terms of Service</Text> & <Text style={styles.link}>Privacy policy</Text>
-        </Text>
-      </View>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+      >
+        <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+          {/* Top landing image (flexible) */}
+          <View style={{ width: '100%', height: width * 0.7 }}>
+            <Image
+              source={require('../../resources/LandingPageImage.jpg')}
+              style={{
+                width: '100%',
+                height: '100%',
+                resizeMode: 'cover',
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+              }}
+            />
+            <LinearGradient
+              colors={['rgba(255,255,255,0.0)', 'rgba(255,255,255,0.7)', 'rgba(255,255,255,1)']}
+              style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                top: 0,
+                bottom: 0,
+              }}
+              start={{ x: 0.5, y: 0.2 }}
+              end={{ x: 0.5, y: 1 }}
+            />
+          </View>
+          <View style={{ alignItems: 'center', marginTop: -width * 0.12, marginBottom: width * 0.01 }}>
+            <Image
+              source={require('../../resources/ElderIcon.png')}
+              style={{
+                width: width * 0.18,
+                height: width * 0.18,
+                resizeMode: 'contain',
+              }}
+            />
+          </View>
+          <View style={[styles.innerContainer, { flex: 1, justifyContent: 'flex-start', paddingTop: 0, paddingBottom: 0, width: '100%' }]}> 
+            <Text style={styles.logoText}>Lumia</Text>
+            <Text style={styles.heading}>India's last minute app</Text>
+            <Text style={styles.subheading}>Log in or sign up</Text>
+            <View style={styles.inputRow}>
+              <Text style={styles.countryCode}>+91</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter mobile number"
+                placeholderTextColor="#A0A0A0"
+                keyboardType="number-pad"
+                maxLength={10}
+                value={mobile}
+                onChangeText={text => {
+                  setMobile(text.replace(/[^0-9]/g, ""));
+                  if (error) setError("");
+                }}
+              />
+            </View>
+            {!!error && <Text style={styles.errorText}>{error}</Text>}
+            <TouchableOpacity
+              style={[
+                styles.continueButton,
+                { backgroundColor: mobile.length === 10 ? '#4CAF50' : '#A3A3A3' },
+              ]}
+              onPress={handleContinue}
+            >
+              <Text style={styles.continueButtonText}>Continue</Text>
+            </TouchableOpacity>
+            <Text style={styles.orText}>OR</Text>
+            <TouchableOpacity style={styles.skipLoginButton} onPress={handleFamilyLogin}>
+              <Text style={styles.skipLoginButtonText}>Go for Family Login</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={[styles.footer, { marginBottom: Platform.OS === 'ios' ? 8 : 4, width: '100%' }]}> 
+            <Text style={styles.footerText}>
+              By continuing, you agree to our <Text style={styles.link}>Terms of Service</Text> & <Text style={styles.link}>Privacy policy</Text>
+            </Text>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };

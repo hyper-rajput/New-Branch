@@ -1,11 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { View, FlatList, Modal, StyleSheet, Alert, SafeAreaView, Platform, ScrollView, TouchableOpacity } from 'react-native';
-import { Provider as PaperProvider, Card, Text, Button, TextInput, IconButton, Switch } from 'react-native-paper';
-import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
-import DateTimePicker from "@react-native-community/datetimepicker";
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import {
+  View,
+  Modal,
+  StyleSheet,
+  Alert,
+  SafeAreaView,
+  ScrollView,
+  TouchableOpacity,
+  FlatList,
+} from 'react-native';
+import { Text, TextInput, Switch, Button, IconButton, Provider as PaperProvider } from 'react-native-paper';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 // Type for medicine
 interface Medicine {
@@ -16,36 +24,29 @@ interface Medicine {
   selectedDays: string[];
   reminderTimes: string[];
   refillDate: Date | null;
+  refillReminderEnabled?: boolean;
+  refillReminderTime?: string;
+  takenDates: string[];
+  startFromToday?: boolean; // New field to track initial "Start from Today" status
 }
 
-export default function MedicationReminder() {
+const daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+const MedicationReminder: React.FC = () => {
   const [medicines, setMedicines] = useState<Medicine[]>([]);
-  // Load medicines from AsyncStorage on mount
-  useEffect(() => {
-    const fetchMedicines = async () => {
-      try {
-        const stored = await AsyncStorage.getItem('medicines');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          // Convert refillDate back to Date object if present
-          setMedicines(parsed.map((m: any) => ({
-            ...m,
-            refillDate: m.refillDate ? new Date(m.refillDate) : null,
-          })));
-        }
-      } catch (e) {
-        // Handle error
-      }
-    };
-    fetchMedicines();
-  }, []);
   const [modalVisible, setModalVisible] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [editMedicineId, setEditMedicineId] = useState<string | null>(null);
+  const [selectedTab, setSelectedTab] = useState<'today' | 'completed' | 'missed' | 'upcoming'>('today');
+  const [timePickerVisible, setTimePickerVisible] = useState(false);
+  const [refillDatePickerVisible, setRefillDatePickerVisible] = useState(false);
+  const [refillTimePickerVisible, setRefillTimePickerVisible] = useState(false);
+  const [now, setNow] = useState(new Date()); // Current time: 01:22 AM IST, Tuesday, August 12, 2025
 
   const [newMedicine, setNewMedicine] = useState<Omit<Medicine, 'id'> & {
     refillReminderEnabled?: boolean;
     refillReminderTime?: string;
+    startFromToday?: boolean;
   }>({
     name: '',
     dosage: '',
@@ -55,13 +56,39 @@ export default function MedicationReminder() {
     refillDate: null,
     refillReminderEnabled: false,
     refillReminderTime: '',
+    takenDates: [],
+    startFromToday: false,
   });
 
-  const [timePickerVisible, setTimePickerVisible] = useState(false);
-  const [refillDatePickerVisible, setRefillDatePickerVisible] = useState(false);
-  const [refillTimePickerVisible, setRefillTimePickerVisible] = useState(false);
+  useEffect(() => {
+    const loadMedicines = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('medicines');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          setMedicines(
+            parsed.map((m: any) => ({
+              ...m,
+              refillDate: m.refillDate ? new Date(m.refillDate) : null,
+              takenDates: m.takenDates || [],
+              startFromToday: m.startFromToday || false,
+            }))
+          );
+        }
+      } catch (e) {
+        console.error('Error loading medicines:', e);
+        Alert.alert('Error', 'Failed to load medicines.');
+      }
+    };
+    loadMedicines();
+  }, []);
 
-  const toggleDay = (day: string) => {
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, []);
+
+  const toggleDay = useCallback((day: string) => {
     setNewMedicine((prev) => {
       const isSelected = prev.selectedDays.includes(day);
       return {
@@ -71,17 +98,16 @@ export default function MedicationReminder() {
           : [...prev.selectedDays, day],
       };
     });
-  };
+  }, []);
 
-  // Remove reminder time
-  const removeReminderTime = (idx: number) => {
+  const removeReminderTime = useCallback((idx: number) => {
     setNewMedicine((prev) => ({
       ...prev,
       reminderTimes: prev.reminderTimes.filter((_, i) => i !== idx),
     }));
-  };
+  }, []);
 
-  const addReminderTime = (event: any, selectedDate: Date | undefined) => {
+  const addReminderTime = useCallback((event: any, selectedDate: Date | undefined) => {
     if (event?.type === 'dismissed') {
       setTimePickerVisible(false);
       return;
@@ -90,19 +116,24 @@ export default function MedicationReminder() {
       const timeString = selectedDate.toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit',
+        hour12: false,
       });
       setNewMedicine((prev) => {
-        if (prev.reminderTimes.includes(timeString)) return prev; // Prevent duplicates
+        if (prev.reminderTimes.includes(timeString)) return prev;
         return {
           ...prev,
-          reminderTimes: [...prev.reminderTimes, timeString],
+          reminderTimes: [...prev.reminderTimes, timeString].sort((a, b) => {
+            const timeA = parseTime(a, new Date());
+            const timeB = parseTime(b, new Date());
+            return timeA && timeB ? timeA.getTime() - timeB.getTime() : 0;
+          }),
         };
       });
     }
     setTimePickerVisible(false);
-  };
+  }, []);
 
-  const openEditMedicine = (medicine: Medicine) => {
+  const openEditMedicine = useCallback((medicine: Medicine) => {
     setEditMedicineId(medicine.id);
     setNewMedicine({
       name: medicine.name,
@@ -111,102 +142,357 @@ export default function MedicationReminder() {
       selectedDays: medicine.selectedDays,
       reminderTimes: medicine.reminderTimes,
       refillDate: medicine.refillDate,
-      refillReminderEnabled: (medicine as any).refillReminderEnabled || false,
-      refillReminderTime: (medicine as any).refillReminderTime || '',
+      refillReminderEnabled: medicine.refillReminderEnabled || false,
+      refillReminderTime: medicine.refillReminderTime || '',
+      takenDates: medicine.takenDates,
+      startFromToday: medicine.startFromToday || false,
     });
     setModalVisible(true);
-  };
+  }, []);
 
-  const saveMedicine = () => {
+  const saveMedicine = useCallback(async () => {
     if (!newMedicine.name.trim() || !newMedicine.dosage.trim()) {
       setValidationError('Medicine name and dosage are required!');
       return;
     }
-    const updateStorage = async (updated: Medicine[]) => {
-      try {
-        await AsyncStorage.setItem('medicines', JSON.stringify(updated));
-      } catch (e) {
-        // Handle error
-      }
-    };
-    if (editMedicineId) {
-      setMedicines((prev) => {
-        const updated = prev.map((m) => m.id === editMedicineId ? { ...m, ...newMedicine } : m);
-        updateStorage(updated);
-        return updated;
-      });
-      setEditMedicineId(null);
-    } else {
-      setMedicines((prev) => {
-        const updated = [...prev, { ...newMedicine, id: Date.now().toString() }];
-        updateStorage(updated);
-        return updated;
-      });
+    if (newMedicine.remindersEnabled && newMedicine.reminderTimes.length === 0) {
+      setValidationError('At least one reminder time is required when reminders are enabled.');
+      return;
     }
-    setModalVisible(false);
-    setValidationError(null);
-    setNewMedicine({
-      name: '',
-      dosage: '',
-      remindersEnabled: true,
-      selectedDays: [],
-      reminderTimes: [],
-      refillDate: null,
-      refillReminderEnabled: false,
-      refillReminderTime: '',
-    });
-  };
+    if (!/^\d+\s*(mg|g|ml|tablet(s)?|capsule(s)?)$/i.test(newMedicine.dosage.trim())) {
+      setValidationError('Dosage must be a number followed by a unit (e.g., "500 mg", "2 tablets").');
+      return;
+    }
+    try {
+      const updatedMedicines = editMedicineId
+        ? medicines.map((m) =>
+            m.id === editMedicineId ? { ...newMedicine, id: editMedicineId } : m
+          )
+        : [...medicines, { ...newMedicine, id: Date.now().toString(), startFromToday: newMedicine.startFromToday }];
+      await AsyncStorage.setItem('medicines', JSON.stringify(updatedMedicines));
+      setMedicines(updatedMedicines);
+      setModalVisible(false);
+      setValidationError(null);
+      setEditMedicineId(null);
+      setNewMedicine({
+        name: '',
+        dosage: '',
+        remindersEnabled: true,
+        selectedDays: [],
+        reminderTimes: [],
+        refillDate: null,
+        refillReminderEnabled: false,
+        refillReminderTime: '',
+        takenDates: [],
+        startFromToday: false,
+      });
+    } catch (e) {
+      console.error('Error saving medicine:', e);
+      Alert.alert('Error', 'Failed to save medicine.');
+    }
+  }, [newMedicine, editMedicineId, medicines]);
 
-  const deleteMedicine = (id: string) => {
+  const deleteMedicine = useCallback((id: string) => {
     Alert.alert('Delete Medicine?', 'This action cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          setMedicines((prev) => {
-            const updated = prev.filter((m) => m.id !== id);
-            AsyncStorage.setItem('medicines', JSON.stringify(updated));
-            return updated;
-          });
+          try {
+            const updatedMedicines = medicines.filter((m) => m.id !== id);
+            await AsyncStorage.setItem('medicines', JSON.stringify(updatedMedicines));
+            setMedicines(updatedMedicines);
+          } catch (e) {
+            console.error('Error deleting medicine:', e);
+            Alert.alert('Error', 'Failed to delete medicine.');
+          }
         },
       },
     ]);
+  }, [medicines]);
+
+  const parseTime = (timeStr: string, currentDate: Date): Date | null => {
+    let hours: number, minutes: number;
+    if (timeStr.includes(' ')) {
+      const [time, modifier] = timeStr.split(' ');
+      const [hoursStr, minutesStr] = time.split(':');
+      hours = parseInt(hoursStr, 10);
+      minutes = parseInt(minutesStr, 10);
+      if (isNaN(hours) || isNaN(minutes)) return null;
+      if (modifier.toUpperCase() === 'PM' && hours < 12) hours += 12;
+      if (modifier.toUpperCase() === 'AM' && hours === 12) hours = 0;
+    } else {
+      const [hoursStr, minutesStr] = timeStr.split(':');
+      hours = parseInt(hoursStr, 10);
+      minutes = parseInt(minutesStr, 10);
+      if (isNaN(hours) || isNaN(minutes)) return null;
+    }
+    return new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), hours, minutes);
   };
 
-  const renderMedicineCard = ({ item }: { item: Medicine }) => {
-    return (
-      <Card style={styles.cardCompact}>
-        <View style={styles.cardRowTop}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.cardTitle}>{item.name}</Text>
-            <Text style={styles.cardSubtitle}>Dosage: {item.dosage}</Text>
+  const todayISO = now.toISOString().split('T')[0];
+  const currentDayIndex = now.getDay(); // 2 for Tuesday
+  const currentDay = currentDayIndex === 0 ? 'Sun' : daysOfWeek[currentDayIndex - 1]; // "Tue"
+
+  const isScheduledToday = useCallback((m: Medicine) => {
+    // Check if the medicine is scheduled for today based on selectedDays or startFromToday
+    const isDayMatch = m.selectedDays.length === 0 || m.selectedDays.includes(currentDay);
+    return m.remindersEnabled && (isDayMatch || (m.startFromToday && todayISO === now.toISOString().split('T')[0]));
+  }, [currentDay, now]);
+
+  const completed = useMemo(() => medicines.filter(m => isScheduledToday(m) && m.takenDates.includes(todayISO)), [medicines, now, isScheduledToday]);
+
+  const missed = useMemo(() => medicines.filter(m =>
+    isScheduledToday(m) &&
+    m.reminderTimes.length > 0 &&
+    m.reminderTimes.every(t => {
+      const medTime = parseTime(t, now);
+      return medTime && medTime < now;
+    }) &&
+    !m.takenDates.includes(todayISO)
+  ), [medicines, now, isScheduledToday]);
+
+  const upcoming = useMemo(() => medicines.filter(m =>
+    m.remindersEnabled &&
+    m.selectedDays.length > 0 &&
+    !m.selectedDays.includes(currentDay) &&
+    !m.takenDates.includes(todayISO)
+  ), [medicines, now, currentDay]);
+
+  const todayMedicines = useMemo(() => medicines.filter(m =>
+    isScheduledToday(m) &&
+    (m.reminderTimes.length === 0 ||
+    m.reminderTimes.every(t => {
+      const medTime = parseTime(t, now);
+      return medTime && medTime <= now;
+    })) &&
+    !completed.includes(m) &&
+    !missed.includes(m) &&
+    !upcoming.includes(m)
+  ), [medicines, completed, missed, upcoming, isScheduledToday, now]);
+
+  const tabData = {
+    today: todayMedicines,
+    completed,
+    missed,
+    upcoming,
+  }[selectedTab];
+
+  const getFrequencyText = (m: Medicine) => {
+    return m.selectedDays.length === 0 ? 'Daily' : m.selectedDays.join(', ');
+  };
+
+  const getStreakText = (m: Medicine) => {
+    if (m.takenDates.length === 0) return '';
+    const sortedDates = m.takenDates.sort();
+    let streak = 0;
+    let current = new Date(todayISO);
+    while (sortedDates.includes(current.toISOString().split('T')[0])) {
+      streak++;
+      current.setDate(current.getDate() - 1);
+    }
+    return streak > 0 ? `${streak} day streak` : '';
+  };
+
+  const renderMedicineCard = useCallback(({ item }: { item: Medicine }) => {
+    const handleComplete = () => {
+      setMedicines((prev) =>
+        prev.map((m) =>
+          m.id === item.id && !m.takenDates.includes(todayISO)
+            ? { ...m, takenDates: [...m.takenDates, todayISO] }
+            : m
+        )
+      );
+    };
+
+    const refillText = item.refillDate
+      ? `Refill due: ${item.refillDate.toLocaleDateString()} ${item.refillReminderTime || ''}`
+      : null;
+    const isRefillPast = item.refillDate && item.refillDate < now;
+    const streakText = getStreakText(item);
+
+    if (selectedTab === 'completed') {
+      return (
+        <View style={[styles.medicineCard, styles.medicineCardCompletedList]} accessibilityLabel={`Completed: ${item.name}`}>
+          <View style={styles.medicineCardRow}>
+            <MaterialIcons name="check-circle" size={22} color="#4CAF50" style={{ marginRight: 8 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.medicineName}>{item.name}</Text>
+              <Text style={styles.medicineDosage}>{item.dosage} • {getFrequencyText(item)}</Text>
+              {streakText && <Text style={styles.streakText}>{streakText}</Text>}
+              {refillText && <Text style={[styles.refillText, isRefillPast && styles.refillPast]}>{refillText}</Text>}
+            </View>
+            <Text style={styles.completedLabel}>Completed</Text>
+            <TouchableOpacity onPress={() => deleteMedicine(item.id)} style={styles.deleteButton} accessibilityLabel={`Delete ${item.name}`}>
+              <MaterialIcons name="delete" size={20} color="#D32F2F" />
+            </TouchableOpacity>
           </View>
-          <View style={styles.cardActionsRow}>
-            <IconButton icon="pencil" iconColor="#1976D2" onPress={() => openEditMedicine(item)} />
-            <IconButton icon="delete" iconColor="#D32F2F" onPress={() => deleteMedicine(item.id)} />
-          </View>
+          <Text style={styles.completedDate}>Completed today</Text>
         </View>
-        <View style={styles.cardRowBottom}>
-          <View style={{ flex: 1 }}>
-            {item.remindersEnabled ? (
-              <>
-                <Text style={styles.cardRemindersTitle}>Reminders:</Text>
-                <Text style={styles.cardReminders}>{item.reminderTimes.length ? item.reminderTimes.join(', ') : 'No times set'}</Text>
-                <Text style={styles.cardRemindersDays}>Days: {item.selectedDays.length ? item.selectedDays.join(', ') : 'None'}</Text>
-              </>
-            ) : (
-              <Text style={styles.cardRemindersDisabled}>Reminders Disabled</Text>
-            )}
-            {(item as any).refillReminderEnabled && (
-              <View style={styles.cardRefillRow}>
-                <Text style={styles.cardRefillLabel}>Refill:</Text>
-                <Text style={styles.cardRefillValue}>{item.refillDate ? item.refillDate.toLocaleDateString() : 'No date'}{(item as any).refillReminderTime ? `, ${(item as any).refillReminderTime}` : ''}</Text>
+      );
+    }
+    if (selectedTab === 'missed') {
+      return (
+        <View style={[styles.medicineCard, styles.medicineCardMissedList]} accessibilityLabel={`Missed: ${item.name}`}>
+          <View style={styles.medicineCardRow}>
+            <MaterialIcons name="error-outline" size={22} color="#D32F2F" style={{ marginRight: 8 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.medicineName}>{item.name}</Text>
+              <Text style={styles.medicineDosage}>{item.dosage} • {getFrequencyText(item)}</Text>
+              {streakText && <Text style={styles.streakText}>{streakText}</Text>}
+              {refillText && <Text style={[styles.refillText, isRefillPast && styles.refillPast]}>{refillText}</Text>}
+            </View>
+            <Text style={styles.missedLabel}>Missed</Text>
+            <TouchableOpacity onPress={() => deleteMedicine(item.id)} style={styles.deleteButton} accessibilityLabel={`Delete ${item.name}`}>
+              <MaterialIcons name="delete" size={20} color="#D32F2F" />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.missedDate}>Missed today</Text>
+        </View>
+      );
+    }
+    if (selectedTab === 'upcoming') {
+      return (
+        <View style={[styles.medicineCard, styles.medicineCardUpcomingList]} accessibilityLabel={`Upcoming: ${item.name}`}>
+          <View style={styles.medicineCardRow}>
+            <MaterialIcons name="access-time" size={22} color="#1976D2" style={{ marginRight: 8 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.medicineName}>{item.name}</Text>
+              <Text style={styles.medicineDosage}>{item.dosage} • {getFrequencyText(item)}</Text>
+              {streakText && <Text style={styles.streakText}>{streakText}</Text>}
+              {refillText && <Text style={[styles.refillText, isRefillPast && styles.refillPast]}>{refillText}</Text>}
+            </View>
+            <Text style={styles.upcomingLabel}>Upcoming</Text>
+            <TouchableOpacity onPress={() => deleteMedicine(item.id)} style={styles.deleteButton} accessibilityLabel={`Delete ${item.name}`}>
+              <MaterialIcons name="delete" size={20} color="#D32F2F" />
+            </TouchableOpacity>
+          </View>
+          {item.reminderTimes.map((time, idx) => (
+            <Text key={idx} style={styles.upcomingDate}>
+              {item.selectedDays[idx % item.selectedDays.length] || currentDay}, {time}
+            </Text>
+          ))}
+        </View>
+      );
+    }
+    // For 'today' tab
+    return (
+      <View style={[styles.medicineCard, styles.medicineCardYellow, { borderColor: '#f5eec2', borderWidth: 1 }]} accessibilityLabel={`Today: ${item.name}`}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+            <Text style={styles.medicineName}>{item.name}</Text>
+            {streakText && (
+              <View style={styles.streakBadge}>
+                <Text style={styles.streakText}>{streakText}</Text>
               </View>
             )}
           </View>
+          <View style={{ flexDirection: 'row' }}>
+            <TouchableOpacity style={styles.editButton} onPress={() => openEditMedicine(item)} accessibilityLabel={`Edit ${item.name}`}>
+              <MaterialIcons name="edit" size={20} color="#222" />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.deleteButton} onPress={() => deleteMedicine(item.id)} accessibilityLabel={`Delete ${item.name}`}>
+              <MaterialIcons name="delete" size={20} color="#D32F2F" />
+            </TouchableOpacity>
+          </View>
         </View>
-      </Card>
+        <Text style={[styles.medicineDosage, { marginBottom: 4 }]}>{item.dosage} • {getFrequencyText(item)}</Text>
+        {refillText && <Text style={[styles.refillText, { marginBottom: 8 }, isRefillPast && styles.refillPast]}>{refillText}</Text>}
+        <View>
+          {item.reminderTimes.length === 0 ? (
+            <Text style={styles.noTimes}>No reminder times set</Text>
+          ) : (
+            item.reminderTimes.map((time, idx) => (
+              <View key={idx} style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: '#fff',
+                borderRadius: 10,
+                marginBottom: 8,
+                paddingVertical: 8,
+                paddingHorizontal: 12,
+                shadowColor: '#000',
+                shadowOpacity: 0.03,
+                shadowRadius: 2,
+                elevation: 1,
+              }}>
+                <MaterialIcons name="schedule" size={18} color="#888" />
+                <Text style={{ marginLeft: 8, fontSize: 16, color: '#222', flex: 1 }}>{time}</Text>
+                <View style={{ marginLeft: 8 }}>
+                  <TouchableOpacity
+                    onPress={handleComplete}
+                    style={{ backgroundColor: '#222', borderRadius: 8, padding: 2, width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}
+                    accessibilityLabel={`Mark ${item.name} as taken at ${time}`}
+                  >
+                    <MaterialIcons name="check" size={18} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+      </View>
+    );
+  }, [selectedTab, todayISO, deleteMedicine, openEditMedicine, now]);
+
+  const renderSummaryCards = () => {
+    return (
+      <View style={styles.summaryRow}>
+        <View style={[styles.summaryCard, styles.summaryCardCompleted]}>
+          <View style={styles.summaryIconContainer}>
+            <MaterialIcons name="check" size={24} color="#4CAF50" />
+          </View>
+          <Text style={[styles.summaryCount, styles.summaryCountCompleted]}>{completed.length}</Text>
+          <Text style={[styles.summaryLabel, styles.summaryLabelCompleted]}>Completed</Text>
+        </View>
+        <View style={[styles.summaryCard, styles.summaryCardMissed]}>
+          <View style={styles.summaryIconContainer}>
+            <MaterialIcons name="close" size={24} color="#FF5252" />
+          </View>
+          <Text style={[styles.summaryCount, styles.summaryCountMissed]}>{missed.length}</Text>
+          <Text style={[styles.summaryLabel, styles.summaryLabelMissed]}>Missed</Text>
+        </View>
+        <View style={[styles.summaryCard, styles.summaryCardUpcoming]}>
+          <View style={styles.summaryIconContainer}>
+            <MaterialIcons name="schedule" size={24} color="#2196F3" />
+          </View>
+          <Text style={[styles.summaryCount, styles.summaryCountUpcoming]}>{upcoming.length}</Text>
+          <Text style={[styles.summaryLabel, styles.summaryLabelUpcoming]}>Upcoming</Text>
+        </View>
+      </View>
+    );
+  };
+
+  const renderTabs = () => {
+    const tabs = [
+      { key: 'today', label: 'Today', badge: todayMedicines.length, badgeColor: '#1976D2' },
+      { key: 'completed', label: 'Completed', badge: completed.length, badgeColor: '#4CAF50' },
+      { key: 'missed', label: 'Missed', badge: missed.length, badgeColor: '#D32F2F' },
+      { key: 'upcoming', label: 'Upcoming', badge: upcoming.length, badgeColor: '#2196F3' },
+    ];
+
+    return (
+      <View style={styles.tabsBarContainer}>
+        {tabs.map((tab) => {
+          const isActive = selectedTab === tab.key;
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              style={[styles.tabModern, isActive && styles.tabModernActive]}
+              onPress={() => setSelectedTab(tab.key)}
+              accessibilityLabel={`Switch to ${tab.label} tab`}
+            >
+              <Text style={[styles.tabModernText, isActive && styles.tabModernTextActive]}>{tab.label}</Text>
+              {tab.badge > 0 && (
+                <View style={[styles.tabModernBadge, { backgroundColor: tab.badgeColor }]}>
+                  <Text style={styles.tabModernBadgeText}>{tab.badge}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
     );
   };
 
@@ -214,40 +500,55 @@ export default function MedicationReminder() {
     <PaperProvider>
       <SafeAreaView style={styles.container}>
         <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => {/* Add navigation logic here if needed */}} style={styles.backButton}>
+          <TouchableOpacity onPress={() => {}} style={styles.backButton} accessibilityLabel="Go back">
             <MaterialIcons name="arrow-back" size={28} color="#1976D2" />
           </TouchableOpacity>
-          <Text style={styles.heading}>Medicine</Text>
-        </View>
-        {medicines.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyStateTitle}>No medicines added yet</Text>
-            <Text style={styles.emptyStateSubtitle}>Add a medicine using the <Text style={{color: '#1976D2', fontWeight: 'bold'}}>+</Text> button below</Text>
-          </View>
-        ) : (
-          <FlatList
-            data={medicines}
-            renderItem={renderMedicineCard}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={{ paddingBottom: 100 }}
-          />
-        )}
-        <View style={styles.fabContainer}>
-          <TouchableOpacity style={styles.newFab} activeOpacity={0.7} onPress={() => setModalVisible(true)}>
-            <MaterialIcons name="add" size={32} color="#fff" style={styles.newFabIcon} />
+          <Text style={styles.heading}>Medicine Tracker</Text>
+          <TouchableOpacity
+            style={styles.addButtonHeader}
+            onPress={() => setModalVisible(true)}
+            accessibilityLabel="Add new medicine"
+          >
+            <MaterialIcons name="add" size={28} color="#fff" />
           </TouchableOpacity>
         </View>
-        {/* Add Medicine Modal */}
-        <Modal visible={modalVisible} animationType="slide" transparent>
+        {renderSummaryCards()}
+        {renderTabs()}
+        <FlatList
+          data={tabData}
+          renderItem={renderMedicineCard}
+          keyExtractor={(item) => item.id}
+          style={styles.content}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={<Text style={styles.emptyText}>No medicines in this category</Text>}
+        />
+        <Modal
+          visible={modalVisible}
+          animationType="fade"
+          transparent
+          onRequestClose={() => {
+            setModalVisible(false);
+            setValidationError(null);
+          }}
+        >
           <View style={styles.modalOverlay}>
-            <SafeAreaView style={styles.modalContainer}>
+            <View style={styles.modalContainerFixed}>
+              <View style={styles.modalHeaderRow}>
+                <TouchableOpacity
+                  onPress={() => {
+                    setModalVisible(false);
+                    setValidationError(null);
+                  }}
+                  style={styles.backButtonModal}
+                  accessibilityLabel="Close modal"
+                >
+                  <MaterialIcons name="arrow-back" size={28} color="#1976D2" />
+                </TouchableOpacity>
+                <Text style={styles.modalTitle}>
+                  {editMedicineId ? 'Edit Medicine' : 'Add New Medicine'}
+                </Text>
+              </View>
               <ScrollView contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
-                <View style={styles.modalHeaderRow}>
-                  <TouchableOpacity onPress={() => { setModalVisible(false); setValidationError(null); }} style={styles.backButtonModal}>
-                    <MaterialIcons name="arrow-back" size={28} color="#1976D2" />
-                  </TouchableOpacity>
-                  <Text style={styles.modalTitle}>Add New Medicine</Text>
-                </View>
                 <TextInput
                   label="Medicine Name"
                   value={newMedicine.name}
@@ -257,12 +558,14 @@ export default function MedicationReminder() {
                   }}
                   style={styles.input}
                   mode="outlined"
-                                    placeholderTextColor="#000"
+                  keyboardType="default"
+                  placeholderTextColor="#000"
                   textColor="#000"
                   theme={{ colors: { background: '#fff', primary: '#1976D2', placeholder: '#000' } }}
+                  accessibilityLabel="Medicine name input"
                 />
                 <TextInput
-                  label="Dosage"
+                  label="Dosage (e.g., 500 mg, 2 tablets)"
                   value={newMedicine.dosage}
                   onChangeText={(text) => {
                     setNewMedicine((prev) => ({ ...prev, dosage: text }));
@@ -270,9 +573,11 @@ export default function MedicationReminder() {
                   }}
                   style={styles.input}
                   mode="outlined"
-                                    placeholderTextColor="#000"
+                  keyboardType="default"
+                  placeholderTextColor="#000"
                   textColor="#000"
                   theme={{ colors: { background: '#fff', primary: '#1976D2', placeholder: '#000' } }}
+                  accessibilityLabel="Dosage input"
                 />
                 {validationError && (
                   <Text style={styles.validationError}>{validationError}</Text>
@@ -283,6 +588,7 @@ export default function MedicationReminder() {
                     value={newMedicine.remindersEnabled}
                     onValueChange={(val) => setNewMedicine((prev) => ({ ...prev, remindersEnabled: val }))}
                     color="#1976D2"
+                    accessibilityLabel="Toggle reminders"
                   />
                 </View>
                 {newMedicine.remindersEnabled && (
@@ -290,30 +596,20 @@ export default function MedicationReminder() {
                     <Text style={styles.sectionTitle}>Select Days</Text>
                     <View style={styles.daysGridContainer}>
                       <View style={styles.daysRowGrid}>
-                        {daysOfWeek.slice(0, 4).map((d) => {
+                        {daysOfWeek.map((d) => {
                           const selected = newMedicine.selectedDays.includes(d);
                           return (
-                            <Text
+                            <TouchableOpacity
                               key={d}
-                              style={[styles.dayCircle, selected ? styles.dayCircleSelected : styles.dayCircleUnselected]}
                               onPress={() => toggleDay(d)}
+                              accessibilityLabel={`Select ${d}`}
                             >
-                              {d}
-                            </Text>
-                          );
-                        })}
-                      </View>
-                      <View style={styles.daysRowGrid}>
-                        {daysOfWeek.slice(4).map((d) => {
-                          const selected = newMedicine.selectedDays.includes(d);
-                          return (
-                            <Text
-                              key={d}
-                              style={[styles.dayCircle, selected ? styles.dayCircleSelected : styles.dayCircleUnselected]}
-                              onPress={() => toggleDay(d)}
-                            >
-                              {d}
-                            </Text>
+                              <Text
+                                style={[styles.dayCircle, selected ? styles.dayCircleSelected : styles.dayCircleUnselected]}
+                              >
+                                {d}
+                              </Text>
+                            </TouchableOpacity>
                           );
                         })}
                       </View>
@@ -325,7 +621,12 @@ export default function MedicationReminder() {
                     {newMedicine.reminderTimes.map((time, idx) => (
                       <View key={idx} style={styles.reminderTimeRow}>
                         <Text style={styles.reminderTimeText}>• {time}</Text>
-                        <IconButton icon="close" size={18} onPress={() => removeReminderTime(idx)} />
+                        <IconButton
+                          icon="close"
+                          size={18}
+                          onPress={() => removeReminderTime(idx)}
+                          accessibilityLabel={`Remove time ${time}`}
+                        />
                       </View>
                     ))}
                     <Button
@@ -334,18 +635,28 @@ export default function MedicationReminder() {
                       style={styles.addTimeButton}
                       onPress={() => setTimePickerVisible(true)}
                       labelStyle={styles.outlinedButtonLabel}
+                      accessibilityLabel="Add reminder time"
                     >
                       Add Time
                     </Button>
                   </>
                 )}
-                {/* Refill Reminder Section */}
+                <View style={styles.rowBetween}>
+                  <Text style={styles.label}>Start from Today</Text>
+                  <Switch
+                    value={!!newMedicine.startFromToday}
+                    onValueChange={(val) => setNewMedicine((prev) => ({ ...prev, startFromToday: val }))}
+                    color="#1976D2"
+                    accessibilityLabel="Toggle start from today"
+                  />
+                </View>
                 <View style={styles.rowBetween}>
                   <Text style={styles.label}>Enable Refill Reminder</Text>
                   <Switch
                     value={!!newMedicine.refillReminderEnabled}
                     onValueChange={(val) => setNewMedicine((prev) => ({ ...prev, refillReminderEnabled: val }))}
                     color="#1976D2"
+                    accessibilityLabel="Toggle refill reminder"
                   />
                 </View>
                 {newMedicine.refillReminderEnabled && (
@@ -357,6 +668,7 @@ export default function MedicationReminder() {
                       style={styles.addTimeButton}
                       onPress={() => setRefillDatePickerVisible(true)}
                       labelStyle={styles.outlinedButtonLabel}
+                      accessibilityLabel="Select refill date"
                     >
                       {newMedicine.refillDate ? newMedicine.refillDate.toLocaleDateString() : 'Select Date'}
                     </Button>
@@ -365,11 +677,11 @@ export default function MedicationReminder() {
                         mode="date"
                         value={newMedicine.refillDate || new Date()}
                         onChange={(event: any, date?: Date) => {
-                          if (event?.type === 'dismissed') {
+                          if (event?.type === 'dismissed' || !date) {
                             setRefillDatePickerVisible(false);
                             return;
                           }
-                          if (date) setNewMedicine((prev) => ({ ...prev, refillDate: date }));
+                          setNewMedicine((prev) => ({ ...prev, refillDate: date }));
                           setRefillDatePickerVisible(false);
                         }}
                         display="spinner"
@@ -382,6 +694,7 @@ export default function MedicationReminder() {
                       style={styles.addTimeButton}
                       onPress={() => setRefillTimePickerVisible(true)}
                       labelStyle={styles.outlinedButtonLabel}
+                      accessibilityLabel="Select refill time"
                     >
                       {newMedicine.refillReminderTime ? newMedicine.refillReminderTime : 'Select Time'}
                     </Button>
@@ -390,14 +703,12 @@ export default function MedicationReminder() {
                         mode="time"
                         value={new Date()}
                         onChange={(event: any, date?: Date) => {
-                          if (event?.type === 'dismissed') {
+                          if (event?.type === 'dismissed' || !date) {
                             setRefillTimePickerVisible(false);
                             return;
                           }
-                          if (date) {
-                            const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                            setNewMedicine((prev) => ({ ...prev, refillReminderTime: timeString }));
-                          }
+                          const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+                          setNewMedicine((prev) => ({ ...prev, refillReminderTime: timeString }));
                           setRefillTimePickerVisible(false);
                         }}
                         display="spinner"
@@ -414,358 +725,428 @@ export default function MedicationReminder() {
                   />
                 )}
                 <View style={styles.modalActions}>
-                  <Button mode="text" onPress={() => { setModalVisible(false); setValidationError(null); }} style={styles.cancelButton} labelStyle={styles.cancelButtonLabel}>
+                  <Button
+                    mode="text"
+                    onPress={() => {
+                      setModalVisible(false);
+                      setValidationError(null);
+                    }}
+                    style={styles.cancelButton}
+                    labelStyle={styles.cancelButtonLabel}
+                    accessibilityLabel="Cancel"
+                  >
                     Cancel
                   </Button>
-                  <Button mode="contained" onPress={saveMedicine} style={styles.saveButton} labelStyle={styles.saveButtonLabel}>
+                  <Button
+                    mode="contained"
+                    onPress={saveMedicine}
+                    style={styles.saveButton}
+                    labelStyle={styles.saveButtonLabel}
+                    accessibilityLabel="Save medicine"
+                  >
                     Save
                   </Button>
                 </View>
               </ScrollView>
-            </SafeAreaView>
+            </View>
           </View>
         </Modal>
       </SafeAreaView>
     </PaperProvider>
   );
-}
+};
+
+export default MedicationReminder;
 
 const styles = StyleSheet.create({
-  cardCompact: {
-    marginBottom: 12,
-    borderRadius: 14,
-    elevation: 2,
-    backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.10,
-    shadowRadius: 3,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    minHeight: 90,
-    justifyContent: 'center',
-  },
-  cardRowTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  cardActionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 0,
-  },
-  cardRowBottom: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 2,
-  },
-  // ...existing code...
-  // Updated compact card styles below
-  cardRemindersTitle: {
-    fontWeight: 'bold',
-    color: '#1976D2',
-    fontSize: 13,
-    marginTop: 2,
-  },
-  cardReminders: {
-    color: '#333',
-    fontSize: 13,
-    marginBottom: 2,
-  },
-  cardRemindersDays: {
-    color: '#555',
-    fontSize: 12,
-    marginBottom: 2,
-  },
-  cardRefillRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  cardRefillLabel: {
-    color: '#1976D2',
-    fontWeight: 'bold',
-    fontSize: 13,
-    marginRight: 4,
-  },
-  cardRefillValue: {
-    color: '#333',
-    fontSize: 13,
+  container: {
+    flex: 1,
+    backgroundColor: '#F5F6F8',
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 18,
-    paddingBottom: 10,
-    paddingHorizontal: 8,
-    backgroundColor: '#f9f9f9',
-  },
-  backButton: {
-    marginRight: 8,
-    padding: 4,
-    borderRadius: 20,
-  },
-  modalHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  backButtonModal: {
-    marginRight: 8,
-    padding: 4,
-    borderRadius: 20,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#f9f9f9',
-    padding: 0,
-    position: 'relative',
+    justifyContent: 'space-between',
+    paddingTop: 16,
+    paddingBottom: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#fff',
   },
   heading: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#000',
-    marginTop: 18,
-    marginBottom: 10,
-    alignSelf: 'center',
-  },
-  outlinedButtonLabel: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingBottom: 80,
-    backgroundColor: '#f9f9f9',
-  },
-  emptyStateTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#222',
-    marginBottom: 8,
+    color: '#1976D2',
   },
-  emptyStateSubtitle: {
-    fontSize: 16,
-    color: '#555',
-    marginBottom: 4,
-    textAlign: 'center',
-  },
-  fabContainer: {
-    position: 'absolute',
-    bottom: 30,
-    right: 30,
-    zIndex: 10,
-  },
-  newFab: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+  addButtonHeader: {
     backgroundColor: '#1976D2',
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 8,
-    shadowColor: '#1976D2',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    position: 'absolute',
-    bottom: 30,
-    right: 30,
-    zIndex: 10,
+    borderRadius: 20,
+    padding: 4,
+    marginLeft: 8,
   },
-  newFabIcon: {
+  backButton: {
+    padding: 8,
+  },
+  content: {
+    flex: 1,
+  },
+  emptyText: {
     textAlign: 'center',
+    color: '#666',
+    fontSize: 16,
+    marginTop: 24,
   },
-  card: {
-    marginBottom: 16,
-    borderRadius: 18,
-    elevation: 4,
+  medicineCard: {
+    marginHorizontal: 16,
+    marginVertical: 8,
+    borderRadius: 12,
+    padding: 16,
     backgroundColor: '#fff',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    paddingHorizontal: 2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
   },
-  cardTitle: {
-    fontSize: 20,
+  medicineCardYellow: {
+    backgroundColor: '#FFFDE7',
+  },
+  medicineCardCompletedList: {
+    backgroundColor: '#F1F8E9',
+    borderColor: '#C8E6C9',
+    borderWidth: 1,
+  },
+  medicineCardMissedList: {
+    backgroundColor: '#FFEBEE',
+    borderColor: '#FFCDD2',
+    borderWidth: 1,
+  },
+  medicineCardUpcomingList: {
+    backgroundColor: '#E3F2FD',
+    borderColor: '#BBDEFB',
+    borderWidth: 1,
+  },
+  medicineCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  medicineName: {
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#000',
+    color: '#333',
+    marginRight: 8,
   },
-  cardSubtitle: {
-    fontSize: 15,
-    color: '#222',
+  streakBadge: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
   },
-  cardRemindersTitle: {
-    fontWeight: 'bold',
-    color: '#000',
-    marginTop: 4,
+  streakText: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '600',
   },
-  cardReminders: {
-    color: '#000',
-    marginBottom: 2,
+  medicineDosage: {
+    fontSize: 14,
+    color: '#666',
   },
-  cardRemindersDisabled: {
+  refillText: {
+    fontSize: 12,
+    color: '#666',
+  },
+  refillPast: {
     color: '#D32F2F',
+  },
+  editButton: {
+    padding: 8,
+    marginTop: -8,
+    marginRight: -8,
+  },
+  deleteButton: {
+    padding: 8,
+    marginTop: -8,
+    marginRight: -8,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 8,
+    marginVertical: 16,
+  },
+  summaryCard: {
+    flex: 1,
+    margin: 8,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  summaryIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  summaryCardCompleted: {
+    backgroundColor: '#E8F5E9',
+  },
+  summaryCardMissed: {
+    backgroundColor: '#FFEBEE',
+  },
+  summaryCardUpcoming: {
+    backgroundColor: '#E3F2FD',
+  },
+  summaryCount: {
+    fontSize: 24,
     fontWeight: 'bold',
-    marginTop: 4,
+    marginBottom: 4,
+  },
+  summaryCountCompleted: {
+    color: '#4CAF50',
+  },
+  summaryCountMissed: {
+    color: '#FF5252',
+  },
+  summaryCountUpcoming: {
+    color: '#2196F3',
+  },
+  summaryLabel: {
+    fontSize: 14,
+  },
+  summaryLabelCompleted: {
+    color: '#388E3C',
+  },
+  summaryLabelMissed: {
+    color: '#D32F2F',
+  },
+  summaryLabelUpcoming: {
+    color: '#1976D2',
   },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.18)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  modalContainer: {
-    flex: 0,
-    padding: 24,
+  modalContainerFixed: {
+    width: '92%',
+    maxHeight: '80%',
     backgroundColor: '#fff',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    minHeight: 480,
+    borderRadius: 18,
+    padding: 18,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.12,
     shadowRadius: 8,
+    elevation: 8,
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  backButtonModal: {
+    padding: 4,
   },
   modalTitle: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 18,
-    color: '#000',
-    alignSelf: 'center',
-  },
-  input: {
-    marginBottom: 16,
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    fontSize: 20,
-    color: '#000',
-
-  },
-  validationError: {
-    color: '#D32F2F',
-    fontWeight: 'bold',
-    marginBottom: 8,
+    color: '#1976D2',
+    flex: 1,
     textAlign: 'center',
   },
-  label: {
-    fontSize: 16,
-    color: '#000',
-    fontWeight: 'bold',
+  modalScrollContent: {
+    paddingBottom: 24,
+  },
+  input: {
+    backgroundColor: '#fff',
+    marginBottom: 12,
   },
   rowBetween: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginVertical: 14,
+    marginBottom: 12,
+  },
+  label: {
+    fontSize: 14,
+    color: '#444',
+    fontWeight: '500',
+    marginBottom: 8,
   },
   sectionTitle: {
-    marginTop: 20,
+    fontSize: 16,
     fontWeight: 'bold',
-    fontSize: 17,
-    color: '#000',
+    color: '#222',
+    marginTop: 12,
     marginBottom: 8,
   },
   daysGridContainer: {
-    marginVertical: 10,
-    marginBottom: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginBottom: 16,
   },
   daysRowGrid: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 4,
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
   dayCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    marginHorizontal: 4,
-    marginVertical: 2,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     textAlign: 'center',
-    textAlignVertical: 'center',
+    lineHeight: 36,
+    borderWidth: 1,
+    borderColor: '#1976D2',
+    color: '#1976D2',
     fontWeight: 'bold',
-    fontSize: 20,
-    lineHeight: 56,
-    overflow: 'hidden',
+    fontSize: 14,
   },
   dayCircleSelected: {
-    backgroundColor: '#000',
+    backgroundColor: '#1976D2',
     color: '#fff',
-    borderWidth: 0,
   },
   dayCircleUnselected: {
-    backgroundColor: '#e3e3e3',
-    color: '#000',
-    borderWidth: 0,
+    backgroundColor: '#fff',
   },
   noTimes: {
     color: '#888',
-    fontStyle: 'italic',
-    marginBottom: 4,
+    fontSize: 14,
+    marginBottom: 12,
+    textAlign: 'center',
   },
   reminderTimeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 2,
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
   reminderTimeText: {
-    color: '#000',
-    fontWeight: 'bold',
     fontSize: 15,
-    marginRight: 4,
-  },
-  addTimeButton: {
-    marginTop: 8,
-    borderColor: '#1976D2',
-    borderWidth: 1,
-    borderRadius: 8,
-    backgroundColor: '#1976D2',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 16,
-    paddingVertical: 4,
+    color: '#222',
   },
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 32,
+    marginTop: 16,
   },
   cancelButton: {
-    backgroundColor: '#e3e3e3',
-    borderRadius: 8,
-    color: '#000',
-    paddingHorizontal: 24,
-    paddingVertical: 8,
+    flex: 1,
     marginRight: 8,
   },
-  cancelButtonLabel: {
-    color: '#000',
-    fontWeight: 'bold',
-    fontSize: 16,
-    textAlign: 'center',
-  },
   saveButton: {
-    backgroundColor: '#1976D2',
-    borderRadius: 8,
-    color: '#fff',
-    paddingHorizontal: 24,
-    paddingVertical: 8,
-    marginLeft: 8,
+    flex: 1,
+  },
+  cancelButtonLabel: {
+    color: '#1976D2',
+    fontWeight: 'bold',
   },
   saveButtonLabel: {
     color: '#fff',
     fontWeight: 'bold',
-    fontSize: 16,
+  },
+  validationError: {
+    color: '#D32F2F',
+    fontSize: 14,
+    marginBottom: 12,
     textAlign: 'center',
   },
-  modalScrollContent: {
-    paddingBottom: 32,
+  addTimeButton: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#1976D2',
+    marginTop: 8,
+  },
+  outlinedButtonLabel: {
+    color: '#1976D2',
+    fontWeight: 'bold',
+  },
+  tabsBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F4F4F7',
+    borderRadius: 20,
+    marginHorizontal: 8,
+    marginVertical: 8,
+    padding: 4,
+  },
+  tabModern: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginHorizontal: 2,
+    backgroundColor: 'transparent',
+    position: 'relative',
+  },
+  tabModernActive: {
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  tabModernText: {
+    color: '#222',
+    fontSize: 16,
+    fontWeight: '500',
+    paddingHorizontal: 6,
+  },
+  tabModernTextActive: {
+    color: '#111',
+    fontWeight: 'bold',
+  },
+  tabModernBadge: {
+    marginLeft: 6,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  tabModernBadgeText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 'bold',
+    lineHeight: 18,
+  },
+  completedLabel: {
+    color: '#388E3C',
+    fontWeight: 'bold',
+    fontSize: 15,
+  },
+  completedDate: {
+    color: '#388E3C',
+    fontSize: 13,
+    marginLeft: 30,
+    marginTop: 2,
+  },
+  missedLabel: {
+    color: '#D32F2F',
+    fontWeight: 'bold',
+    fontSize: 15,
+  },
+  missedDate: {
+    color: '#D32F2F',
+    fontSize: 13,
+    marginLeft: 30,
+    marginTop: 2,
+  },
+  upcomingLabel: {
+    color: '#1976D2',
+    fontWeight: 'bold',
+    fontSize: 15,
+  },
+  upcomingDate: {
+    color: '#1976D2',
+    fontSize: 13,
+    marginLeft: 30,
+    marginTop: 2,
   },
 });
